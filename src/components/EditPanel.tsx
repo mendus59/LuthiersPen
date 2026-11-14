@@ -41,6 +41,14 @@ export function EditPanel({ score, selection: sel, apply, setScore, select, undo
       <h3>Piece</h3>
       <div className="grid2">
         <label>
+          Subtitle
+          <input type="text" value={score.subtitle ?? ''} placeholder="e.g. Suite Española, Op. 47" onChange={(e) => setScore({ ...score, subtitle: e.target.value })} />
+        </label>
+        <label>
+          Tempo marking
+          <input type="text" value={score.tempoText ?? ''} placeholder="e.g. Allegro" onChange={(e) => setScore({ ...score, tempoText: e.target.value })} />
+        </label>
+        <label>
           Tempo
           <input type="number" min={20} max={240} value={score.tempo} onChange={(e) => setScore({ ...score, tempo: Math.max(20, Math.min(240, Number(e.target.value) || 60)) })} />
         </label>

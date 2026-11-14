@@ -144,7 +144,6 @@ export function assignFingerboard(notes: GridNote[], tuning: number[]): { notes:
   const marks: GroupMark[] = []
   let printedPos = -1
   let shown = new Set<string>()
-  let lastBarre = 0
   let lastUpper: { string: number; rh: RhFinger } | null = null
 
   for (let g = 0; g < G; g++) {
@@ -169,19 +168,15 @@ export function assignFingerboard(notes: GridNote[], tuning: number[]): { notes:
 
     // Barre: two or more notes stopped by the first finger.
     const atIndex = fretted.filter((n) => n.fret === handPos)
-    let barre = 0
     if (atIndex.length >= 2 && group.length >= 3) {
       const lowString = Math.max(...atIndex.map((n) => n.string))
       const blocked = group.some((n) => n.fret === 0 && n.string < lowString)
       if (!blocked) {
-        barre = handPos
-        if (barre !== lastBarre) {
-          mark.barre = { fret: handPos, half: lowString <= 4 }
-          delete mark.text
-        }
+        // Every beat under the barre carries it, so the engraver can draw one bracket over the run.
+        mark.barre = { fret: handPos, half: lowString <= 4 }
+        delete mark.text
       }
     }
-    lastBarre = barre
 
     for (const n of group) {
       if (n.fret > 0) {

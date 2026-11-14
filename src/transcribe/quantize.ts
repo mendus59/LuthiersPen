@@ -211,6 +211,22 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
     buildVoice(grid, 0)
   }
 
+  // Carry a barre across the beats between two chords that share it (up to a measure apart),
+  // so it prints as one bracket instead of a mark per chord.
+  for (let vi = 0; vi < (opts.twoVoices ? 2 : 1); vi++) {
+    const flat = measures.flatMap((x) => x.voices[vi])
+    let lastIndex = -1
+    flat.forEach((beat, i) => {
+      if (!beat.barre) return
+      const prev = lastIndex >= 0 ? flat[lastIndex] : null
+      if (prev?.barre && prev.barre.fret === beat.barre.fret && i - lastIndex <= 16) {
+        if (prev.barre.half !== beat.barre.half) beat.barre = { ...prev.barre }
+        for (let k = lastIndex + 1; k < i; k++) flat[k].barre = { ...prev.barre }
+      }
+      lastIndex = i
+    })
+  }
+
   // A final measure holding nothing but the tail of a tied note is the last chord ringing out.
   while (measures.length > 1 && measures[measures.length - 1].voices.every((v) => v.every((b) => b.notes.every((n) => n.tie)))) measures.pop()
 
