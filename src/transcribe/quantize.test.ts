@@ -94,3 +94,22 @@ it('keeps the barlines on the bass when the pulse gains a beat', () => {
   const firsts = score.measures.slice(1).map((m) => m.voices[0][0].notes.map((n) => notePitch(score, n)))
   expect(firsts.every((p) => p.includes(45))).toBe(true)
 })
+
+it('gives the bass voice only the note that carries the harmony', () => {
+  // Three measures of 3/8: an arpeggio of sixteenths rising from the bass, as in Für Elise.
+  const events: NoteEvent[] = []
+  const beatTimes: number[] = []
+  for (let bar = 0; bar < 3; bar++)
+    [45, 52, 57, 60, 64, 69].forEach((pitch, i) => {
+      const start = 1 + (bar * 6 + i) * 0.2
+      events.push({ start, duration: 0.2, pitch, amplitude: 0.7 })
+      if (i % 2 === 0) beatTimes.push(start)
+    })
+  const { score } = quantize(events, { timing: { beatTimes }, timeSig: [3, 8], pickupBeats: 0, twoVoices: true, grid: 16, key: 0, title: '', composer: '' })
+  expect(score.measures.length).toBe(3)
+  for (const m of score.measures) {
+    // Bass: one dotted quarter. Upper voice: a sixteenth rest, then the five notes above the bass.
+    expect(m.voices[1].map((b) => [b.dur, b.dots ?? 0, b.notes.map((n) => notePitch(score, n))])).toEqual([[4, 1, [45]]])
+    expect(m.voices[0].map((b) => b.notes.map((n) => notePitch(score, n))[0] ?? null)).toEqual([null, 52, 57, 60, 64, 69])
+  }
+})
