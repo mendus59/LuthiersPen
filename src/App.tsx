@@ -12,7 +12,7 @@ import type { RenderOptions } from './model/toAlphaTab'
 import { MODEL_RATE, decodeToMono, monoToWav } from './transcribe/audio'
 import { cleanEvents } from './transcribe/clean'
 import { detectNotes } from './transcribe/detect'
-import { guessKey, guessPickup, quantize, stepsPerBeat } from './transcribe/quantize'
+import { alignBars, guessKey, guessMeter, quantize, stepsPerBeat, stepsPerMeasure } from './transcribe/quantize'
 import { type Timing, beatsToTime, rescaleTiming, timingTempo, trackBeats } from './transcribe/tempo'
 import type { NoteEvent } from './transcribe/types'
 import { type VerifyResult, verify } from './verify/verify'
@@ -122,8 +122,10 @@ export default function App() {
   // ---- transcription ------------------------------------------------------------------------
   const requantize = useCallback(
     (rec: Recording, s: TranscribeSettings, title?: string) => {
-      const timing = s.pulse === 1 ? rec.timing : rescaleTiming(rec.timing, s.pulse)
-      const pickup = s.pickup >= 0 ? s.pickup : guessPickup(rec.events, timing, s.timeSig)
+      const heard = s.pulse === 1 ? rec.timing : rescaleTiming(rec.timing, s.pulse)
+      // Unless the pickup is fixed by hand, let the bass place the barlines.
+      const fit = s.pickup >= 0 ? { timing: heard, pickup: s.pickup } : alignBars(rec.events, heard, stepsPerMeasure(s.timeSig) / stepsPerBeat(s.timeSig))
+      const { timing, pickup } = fit
       const out = quantize(rec.events, {
         timing,
         timeSig: s.timeSig,
@@ -156,7 +158,7 @@ export default function App() {
           if (old) URL.revokeObjectURL(old.url)
           return rec
         })
-        const s = { ...DEFAULT_SETTINGS, twoVoices: settings.twoVoices, grid: settings.grid }
+        const s = { ...DEFAULT_SETTINGS, timeSig: guessMeter(rec.events, rec.timing), twoVoices: settings.twoVoices, grid: settings.grid }
         setSettings(s)
         scoreRef.current = { ...scoreRef.current, composer: '' }
         requantize(rec, s, name)
@@ -173,7 +175,7 @@ export default function App() {
   const detected = useMemo(() => {
     if (!recording) return null
     const timing = settings.pulse === 1 ? recording.timing : rescaleTiming(recording.timing, settings.pulse)
-    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: guessPickup(recording.events, timing, settings.timeSig) }
+    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: alignBars(recording.events, timing, stepsPerMeasure(settings.timeSig) / stepsPerBeat(settings.timeSig)).pickup }
   }, [recording, settings.pulse, settings.timeSig])
 
   // ---- verification -------------------------------------------------------------------------

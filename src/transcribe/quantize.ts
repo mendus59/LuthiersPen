@@ -25,8 +25,10 @@ export interface QuantizeResult {
 }
 
 /** Sixteenths per tracked beat: a dotted quarter in compound time, else a quarter. */
+/** Sixteenths in one beat of the tracked pulse: a dotted quarter in 6/8, an eighth in 3/8, otherwise a quarter. */
 export function stepsPerBeat(timeSig: [number, number]): number {
-  return timeSig[1] === 8 && timeSig[0] % 3 === 0 && timeSig[0] > 3 ? 6 : 4
+  if (timeSig[1] !== 8) return 4
+  return timeSig[0] % 3 === 0 && timeSig[0] > 3 ? 6 : 2
 }
 
 export function stepsPerMeasure(timeSig: [number, number]): number {
@@ -63,21 +65,90 @@ function splitSpan(pos: number, len: number, rest: boolean, beat: number): Array
   return out
 }
 
-/** Guess how many beats of pickup precede the first downbeat: strong, low notes mark downbeats. */
-export function guessPickup(notes: NoteEvent[], timing: Timing, timeSig: [number, number]): number {
-  const spb = stepsPerBeat(timeSig)
-  const beatsPerMeasure = Math.max(1, Math.round(stepsPerMeasure(timeSig) / spb))
-  const weight = new Array<number>(beatsPerMeasure).fill(0)
+/** How strongly each beat of the pulse is marked by the bass: low, loud, long notes landing on it. */
+function bassAccents(notes: NoteEvent[], timing: Timing): number[] {
+  const accents = new Array<number>(timing.beatTimes.length + 2).fill(0)
   for (const n of notes) {
     const b = timeToBeats(timing, n.start)
     const nearest = Math.round(b)
-    if (Math.abs(b - nearest) > 0.15 || nearest < 0) continue
-    const low = Math.max(0, (60 - n.pitch) / 20)
-    weight[nearest % beatsPerMeasure] += n.amplitude * (0.3 + low) * Math.min(1, n.duration)
+    if (Math.abs(b - nearest) > 0.2 || nearest < 0 || nearest >= accents.length) continue
+    accents[nearest] += n.amplitude * Math.max(0, (60 - n.pitch) / 20) * Math.min(1, n.duration)
   }
-  let best = 0
-  for (let i = 1; i < beatsPerMeasure; i++) if (weight[i] > weight[best] * 1.4) best = i
-  return best
+  return accents
+}
+
+/**
+ * Guess the meter from how often the bass returns: every three beats means triple time, written
+ * in 3/8 when the beat is quick and 3/4 otherwise. Anything else is written in 4/4.
+ */
+export function guessMeter(notes: NoteEvent[], timing: Timing): [number, number] {
+  const accents = bassAccents(notes, timing)
+  const n = accents.length
+  if (n < 16) return [4, 4]
+  const mean = accents.reduce((a, b) => a + b, 0) / n
+  const variance = accents.reduce((a, b) => a + (b - mean) * (b - mean), 0)
+  if (variance === 0) return [4, 4]
+  const repeat = (lag: number) => {
+    let sum = 0
+    for (let i = 0; i + lag < n; i++) sum += (accents[i] - mean) * (accents[i + lag] - mean)
+    return sum / variance
+  }
+  const triple = repeat(3)
+  if (triple < 0.1 || triple < Math.max(repeat(2), repeat(4)) + 0.05) return [4, 4]
+  return timingTempo(timing) >= 110 ? [3, 8] : [3, 4]
+}
+
+const SLIP = 1.5
+
+/**
+ * Put the barlines where the bass says they are. Measures are a fixed number of beats long, but a
+ * player who lingers or hurries can make the tracked pulse gain or lose a beat; rather than let
+ * every later barline fall in the wrong place, allow a measure to be heard as one beat long or
+ * short where the bass clearly asks for it, and stretch or squeeze the pulse there to fit.
+ * Returns the corrected pulse and the number of pickup beats before the first downbeat.
+ */
+export function alignBars(notes: NoteEvent[], timing: Timing, beatsPerMeasure: number): { timing: Timing; pickup: number } {
+  const L = beatsPerMeasure
+  const accents = bassAccents(notes, timing).slice(0, timing.beatTimes.length)
+  const n = accents.length
+  const sorted = accents.filter((a) => a > 0).sort((a, b) => a - b)
+  const scale = sorted.length ? sorted[Math.floor(sorted.length * 0.75)] : 1
+  if (L < 2 || n < 2 * L) return { timing, pickup: 0 }
+  const best = new Array<number>(n).fill(-Infinity)
+  const from = new Array<number>(n).fill(-1)
+  for (let i = 0; i < n; i++) {
+    const own = Math.min(2, accents[i] / scale)
+    if (i < L) best[i] = own - (i === 0 ? 0 : 0.2)
+    for (const len of [L, L - 1, L + 1]) {
+      const j = i - len
+      if (j < 0 || best[j] === -Infinity) continue
+      const v = best[j] + own - (len === L ? 0 : SLIP)
+      if (v > best[i]) {
+        best[i] = v
+        from[i] = j
+      }
+    }
+  }
+  let end = n - 1
+  for (let i = n - 1; i >= Math.max(0, n - L); i--) if (best[i] > best[end]) end = i
+  const downbeats: number[] = []
+  for (let i = end; i >= 0; i = from[i]) downbeats.push(i)
+  downbeats.reverse()
+  const b = timing.beatTimes
+  const beats: number[] = b.slice(0, downbeats[0])
+  for (let k = 0; k < downbeats.length; k++) {
+    const start = downbeats[k]
+    const stop = k + 1 < downbeats.length ? downbeats[k + 1] : -1
+    if (stop < 0) {
+      beats.push(...b.slice(start))
+    } else if (stop - start === L) {
+      beats.push(...b.slice(start, stop))
+    } else {
+      // An irregular measure: spread the regular number of beats evenly over its time.
+      for (let q = 0; q < L; q++) beats.push(b[start] + ((b[stop] - b[start]) * q) / L)
+    }
+  }
+  return { timing: { beatTimes: beats }, pickup: downbeats[0] }
 }
 
 /** Turn detected notes into an engraved score: quantize, split voices, finger, and bar. */
