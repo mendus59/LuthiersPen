@@ -35,7 +35,10 @@ export interface Measure {
 
 export interface Score {
   title: string
+  subtitle?: string
   composer: string
+  /** Tempo word printed at the start, e.g. Allegro. */
+  tempoText?: string
   tempo: number
   timeSig: [number, number]
   /** Key signature: number of sharps (positive) or flats (negative). */

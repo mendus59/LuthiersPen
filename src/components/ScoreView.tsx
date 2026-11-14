@@ -68,8 +68,8 @@ export const ScoreView = forwardRef<ScoreViewHandle, Props>(function ScoreView(p
     settings.player.enableCursor = true
     settings.player.enableUserInteraction = true
     settings.player.scrollOffsetY = -160
-    settings.display.stretchForce = 0.8
-    settings.display.resources.barNumberColor = new alphaTab.model.Color(138, 125, 112)
+    settings.display.stretchForce = 0.55
+    settings.display.resources.barNumberColor = new alphaTab.model.Color(42, 33, 27)
     // Print the bass voice as black as the melody, like an engraved edition.
     settings.display.resources.secondaryGlyphColor = settings.display.resources.mainGlyphColor
     settings.display.layoutMode = alphaTab.LayoutMode.Page
@@ -108,7 +108,17 @@ export const ScoreView = forwardRef<ScoreViewHandle, Props>(function ScoreView(p
     a.playerPositionChanged.on((e) => latest.current.onPosition({ time: e.currentTime / 1000, end: e.endTime / 1000 }))
     a.playerReady.on(() => latest.current.onReady(true))
     a.postRenderFinished.on(() => setRenderCount((c) => c + 1))
+    // alphaTab labels a barre "B VII" / "1/2B VII"; classical editions print "CVII" / "½CVII".
+    const relabel = () => {
+      for (const t of host.current?.querySelectorAll('text') ?? []) {
+        const hit = /^(1\/2)?B ([IVXL]+)$/.exec(t.textContent ?? '')
+        if (hit) t.textContent = `${hit[1] ? '½' : ''}C${hit[2]}`
+      }
+    }
+    const observer = new MutationObserver(relabel)
+    observer.observe(host.current!, { childList: true, subtree: true })
     return () => {
+      observer.disconnect()
       a.destroy()
       api.current = null
     }

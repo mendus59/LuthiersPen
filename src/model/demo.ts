@@ -42,5 +42,5 @@ export function demoScore(): Score {
       [{ dur: 2, notes: [{ string: 5, fret: 0 }] }, { dur: 2, notes: [] }],
     ],
   })
-  return { title: 'Arpeggio Study in A minor', composer: 'LuthiersPen demo', tempo: 72, timeSig: [4, 4], key: 0, tuning: [...STANDARD_TUNING], measures }
+  return { title: 'Arpeggio Study', subtitle: 'in A minor', composer: 'LuthiersPen demo', tempoText: 'Andante', tempo: 72, timeSig: [4, 4], key: 0, tuning: [...STANDARD_TUNING], measures }
 }

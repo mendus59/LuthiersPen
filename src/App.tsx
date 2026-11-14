@@ -40,7 +40,7 @@ export default function App() {
   const [redoStack, setRedo] = useState<Score[]>([])
   const [selection, setSelection] = useState<ed.Selection | null>(null)
   const [tab, setTab] = useState<Tab>('transcribe')
-  const [options, setOptions] = useState<RenderOptions>({ showLh: true, showRh: false, showStrings: true, showTab: false })
+  const [options, setOptions] = useState<RenderOptions>({ showLh: true, showRh: true, showStrings: true, showTab: true, showChords: true })
   const [zoom, setZoom] = useState(1)
   const [playing, setPlaying] = useState(false)
   const [ready, setReady] = useState(false)
@@ -435,7 +435,7 @@ export default function App() {
         )}
         <span className="spacer" />
         <div className="toggles">
-          {([['showLh', 'Left hand'], ['showRh', 'Right hand'], ['showStrings', 'Strings'], ['showTab', 'Tab']] as const).map(([k, label]) => (
+          {([['showLh', 'Left hand'], ['showRh', 'Right hand'], ['showStrings', 'Strings'], ['showChords', 'Chords'], ['showTab', 'Tab']] as const).map(([k, label]) => (
             <label key={k} className="check">
               <input type="checkbox" checked={options[k]} onChange={(e) => setOptions({ ...options, [k]: e.target.checked })} />
               {label}

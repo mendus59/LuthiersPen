@@ -1,4 +1,5 @@
 import * as alphaTab from '@coderline/alphatab'
+import { chordName } from './chords'
 import { type Score, measureTicks, restsFor, voiceTicks } from './score'
 
 const m = alphaTab.model
@@ -8,6 +9,7 @@ export interface RenderOptions {
   showRh: boolean
   showStrings: boolean
   showTab: boolean
+  showChords: boolean
   /** Notes to print in the warning colour, as "measure:voice:beat:string". */
   doubts?: Set<string>
 }
@@ -26,7 +28,13 @@ const DOUBT = alphaTab.model.Color.fromJson('#c2410c')
 export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab.Settings): alphaTab.model.Score {
   const at = new m.Score()
   at.title = score.title
+  at.subTitle = score.subtitle ?? ''
   at.music = score.composer
+  // Header like a printed edition: title and subtitle centred, the composer alone at the right.
+  at.style = new m.ScoreStyle()
+  at.style.headerAndFooter.set(m.ScoreSubElement.Music, new m.HeaderFooterStyle('%MUSIC%', true, alphaTab.platform.TextAlign.Right))
+  at.style.headerAndFooter.set(m.ScoreSubElement.WordsAndMusic, new m.HeaderFooterStyle('', false))
+  at.stylesheet.barNumberDisplay = m.BarNumberDisplay.FirstOfSystem
 
   const track = new m.Track()
   track.name = 'Guitar'
@@ -51,7 +59,11 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
     const mb = new m.MasterBar()
     mb.timeSignatureNumerator = score.timeSig[0]
     mb.timeSignatureDenominator = score.timeSig[1]
-    if (mi === 0) mb.tempoAutomations.push(m.Automation.buildTempoAutomation(false, 0, score.tempo, 2))
+    if (mi === 0) {
+      const tempo = m.Automation.buildTempoAutomation(false, 0, score.tempo, 2)
+      if (score.tempoText) tempo.text = score.tempoText
+      mb.tempoAutomations.push(tempo)
+    }
     at.addMasterBar(mb)
 
     const bar = new m.Bar()
@@ -59,6 +71,20 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
     bar.keySignature = score.key as alphaTab.model.KeySignature
     staff.addBar(bar)
 
+    let chordId: string | null = null
+    if (opts.showChords) {
+      const name = chordName(score, measure)
+      if (name) {
+        chordId = `c:${name}`
+        if (!staff.chords?.has(chordId)) {
+          const chord = new m.Chord()
+          chord.name = name
+          chord.showDiagram = false
+          chord.showFingering = false
+          staff.addChord(chordId, chord)
+        }
+      }
+    }
     const voiceCount = twoVoices ? 2 : 1
     for (let vi = 0; vi < voiceCount; vi++) {
       const voice = new m.Voice()
@@ -89,6 +115,7 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
         if (twoVoices && b.notes.length > 0) {
           beat.preferredBeamDirection = vi === 0 ? alphaTab.rendering.BeamDirection.Up : alphaTab.rendering.BeamDirection.Down
         }
+        if (chordId && vi === 0 && bi === 0) beat.chordId = chordId
         voice.addBeat(beat)
         for (const n of b.notes) {
           const note = new m.Note()
