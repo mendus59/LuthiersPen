@@ -6,7 +6,7 @@
      See CLAUDE.md ("Site summary"). -->
 Turn a solo guitar recording into classical guitar sheet music you can play back, check against the original and edit, all in the browser.
 
-- Transcribe an audio file, a YouTube video played in the page, or your microphone into classical guitar notation, with tempo, meter and key worked out for you.
+- Transcribe an audio or MP4 video file (all of it or a chosen part), a YouTube video played in the page, or your microphone into classical guitar notation.
 - Scores are engraved like a published edition: notation over tablature, two voices, fingerings, string numbers, barre brackets and chord names.
 - Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
 - Check the transcription: every written note is looked up in the recording, and doubtful notes and measures are marked in the score.
@@ -28,6 +28,10 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 | Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
 | Engrave and play | [alphaTab](https://alphatab.net) draws the notation and plays it with a nylon-guitar soundfont. | `src/model/toAlphaTab.ts`, `src/components/ScoreView.tsx` |
 | Check | Each note the score will play is looked up in the recording at that moment (its partials must stand clear of the neighbouring semitones), and each note heard must be in the score. | `src/verify/` |
+
+### Video files
+
+An MP4 (or MOV/WebM) video can be chosen like an audio file; only its sound is read. *From* and *To* limit the transcription to part of the recording, for example the performance at the start of a lesson video without the slow walkthrough and its metronome.
 
 ### YouTube
 

@@ -143,12 +143,13 @@ export default function App() {
   )
 
   const onAudio = useCallback(
-    async (data: ArrayBuffer, name: string) => {
+    async (data: ArrayBuffer, name: string, range?: { from: number; to: number }) => {
       setNotice(null)
       try {
         setBusy('Reading the audio…')
         setProgress(0)
-        const mono = await decodeToMono(data)
+        const whole = await decodeToMono(data)
+        const mono = range ? whole.slice(Math.round(range.from * MODEL_RATE), Number.isFinite(range.to) ? Math.round(range.to * MODEL_RATE) : undefined) : whole
         if (mono.length < MODEL_RATE) throw new Error('That recording is too short to transcribe.')
         setBusy('Listening for notes…')
         const events = cleanEvents(await detectNotes(mono, setProgress), mono, MODEL_RATE)
@@ -486,7 +487,7 @@ export default function App() {
               hasCapture={!!recording}
               settings={settings}
               detected={detected}
-              onAudio={(d, n) => void onAudio(d, n)}
+              onAudio={(d, n, r) => void onAudio(d, n, r)}
               onSettings={(s) => {
                 setSettings(s)
                 if (recording) requantize(recording, s)

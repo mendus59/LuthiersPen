@@ -17,9 +17,16 @@ interface Props {
   hasCapture: boolean
   settings: TranscribeSettings
   detected: { tempo: number; notes: number; pickup: number } | null
-  onAudio(data: ArrayBuffer, name: string): void
+  /** `range` limits the transcription to part of the recording, in seconds. */
+  onAudio(data: ArrayBuffer, name: string, range?: { from: number; to: number }): void
   onSettings(s: TranscribeSettings): void
   onError(message: string): void
+}
+
+/** "1:23", "83" or "1:23.5" → seconds; anything else → null. */
+export function parseTime(text: string): number | null {
+  const hit = /^\s*(?:(\d+):)?(\d+(?:\.\d+)?)\s*$/.exec(text)
+  return hit ? Number(hit[1] ?? 0) * 60 + Number(hit[2]) : null
 }
 
 const SIGS: Array<[number, number]> = [[4, 4], [3, 4], [2, 4], [6, 8], [3, 8], [9, 8], [12, 8], [2, 2]]
@@ -27,6 +34,8 @@ const SIGS: Array<[number, number]> = [[4, 4], [3, 4], [2, 4], [6, 8], [3, 8], [
 export function TranscribePanel(p: Props) {
   const [source, setSource] = useState<'file' | 'youtube' | 'mic'>('file')
   const [link, setLink] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [recording, setRecording] = useState<'tab' | 'mic' | null>(null)
   const [seconds, setSeconds] = useState(0)
   const capture = useRef<Capture | null>(null)
@@ -97,26 +106,43 @@ export function TranscribePanel(p: Props) {
       <div className="seg" role="tablist">
         {(['file', 'youtube', 'mic'] as const).map((k) => (
           <button key={k} role="tab" aria-selected={source === k} className={source === k ? 'on' : ''} disabled={locked} onClick={() => setSource(k)}>
-            {k === 'file' ? 'Audio file' : k === 'youtube' ? 'YouTube' : 'Microphone'}
+            {k === 'file' ? 'File' : k === 'youtube' ? 'YouTube' : 'Microphone'}
           </button>
         ))}
       </div>
 
       {source === 'file' && (
-        <label className={`drop ${locked ? 'disabled' : ''}`}>
-          <input
-            type="file"
-            accept="audio/*,video/mp4,.mp3,.wav,.m4a,.ogg,.flac"
-            disabled={locked}
-            onChange={async (e) => {
-              const f = e.target.files?.[0]
-              e.target.value = ''
-              if (f) p.onAudio(await f.arrayBuffer(), f.name.replace(/\.[^.]+$/, ''))
-            }}
-          />
-          <strong>Choose an audio file</strong>
-          <span>MP3, WAV, M4A, OGG or FLAC</span>
-        </label>
+        <div className="stack">
+          <label className={`drop ${locked ? 'disabled' : ''}`}>
+            <input
+              type="file"
+              accept="audio/*,video/mp4,video/quicktime,video/webm,.mp3,.wav,.m4a,.ogg,.flac,.mp4,.mov,.webm"
+              disabled={locked}
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                e.target.value = ''
+                if (!f) return
+                const start = parseTime(from) ?? 0
+                const end = parseTime(to) ?? Infinity
+                if (end <= start) return p.onError('The end of the part to transcribe must come after its start.')
+                p.onAudio(await f.arrayBuffer(), f.name.replace(/\.[^.]+$/, ''), from.trim() || to.trim() ? { from: start, to: end } : undefined)
+              }}
+            />
+            <strong>Choose an audio or video file</strong>
+            <span>MP3, WAV, M4A, OGG, FLAC, or an MP4 video (its sound is used)</span>
+          </label>
+          <div className="grid2">
+            <label>
+              From
+              <input type="text" inputMode="numeric" placeholder="0:00" value={from} disabled={locked} onChange={(e) => setFrom(e.target.value)} />
+            </label>
+            <label>
+              To
+              <input type="text" inputMode="numeric" placeholder="end" value={to} disabled={locked} onChange={(e) => setTo(e.target.value)} />
+            </label>
+          </div>
+          <p className="hint">Leave these empty for the whole recording. For a lesson video, give only the performance, without the slow part or a metronome.</p>
+        </div>
       )}
 
       {source === 'youtube' && (
