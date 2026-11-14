@@ -4,13 +4,57 @@
 <!-- This section is this project's card on https://mendus59.github.io and is copied there daily.
      Keep it true of what's on main: one plain-text summary line (max 160 characters), then 1-6 short bullets.
      See CLAUDE.md ("Site summary"). -->
-Turn a solo guitar recording or YouTube link into classical guitar sheet music you can play back, check and edit in the browser.
+Turn a solo guitar recording into classical guitar sheet music you can play back, check against the original and edit, all in the browser.
 
-- Upload an audio file or paste a YouTube link of a solo guitarist and get a transcription in standard classical guitar notation.
-- Scores are engraved like published classical guitar editions, with fingerings, string numbers, position markings and voices.
-- Play the piece straight from the notation, with a synced cursor, looping and tempo control.
-- Each transcription is checked by rendering it back to audio and comparing it with the original recording.
-- Sign in with Firebase to save transcriptions, edit them, or write new scores from scratch.
+- Transcribe an audio file, a YouTube video played in the page, or your microphone into standard classical guitar notation; nothing is uploaded.
+- Scores are engraved in two voices with left- and right-hand fingerings, circled string numbers, and barre and position marks, with optional tablature.
+- Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
+- Check the transcription: every written note is looked up in the recording, and doubtful notes and measures are marked in the score.
+- Edit any note, rhythm or fingering, or write a new score from scratch, with undo and keyboard shortcuts.
+- Sign in with Google or email to save scores to your library, and export to PDF, MIDI or Guitar Pro.
 <!-- site-summary:end -->
 
-LuthiersPen is a classical guitar transcription web app hosted on GitHub Pages at https://mendus59.github.io/LuthiersPen/.
+**Open the app: https://mendus59.github.io/LuthiersPen/**
+
+## How it works
+
+Everything runs in the browser; the site is static and hosted on GitHub Pages.
+
+| Step | What happens | Where |
+| --- | --- | --- |
+| Listen | Spotify's [Basic Pitch](https://github.com/spotify/basic-pitch) model (TensorFlow.js) finds the notes in the recording. Ringing strings reported as re-plucked and overtones reported as notes are removed by going back to the audio. | `src/transcribe/detect.ts`, `clean.ts` |
+| Find the beat | A dynamic-programming beat tracker follows the performance, so rubato does not push notes off the grid. | `src/transcribe/tempo.ts` |
+| Write it down | Notes are quantized, split into melody and bass voices, barred, and given note values and rests. | `src/transcribe/quantize.ts` |
+| Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
+| Engrave and play | [alphaTab](https://alphatab.net) draws the notation and plays it with a nylon-guitar soundfont. | `src/model/toAlphaTab.ts`, `src/components/ScoreView.tsx` |
+| Check | Each note the score will play is looked up in the recording at that moment (its partials must stand clear of the neighbouring semitones), and each note heard must be in the score. | `src/verify/` |
+
+### YouTube
+
+A static website cannot download the audio of a YouTube video. Instead the video plays inside the page and the browser records the tab's sound, with your permission: choose *this tab* and keep *Also share tab audio* on. This takes as long as the video and needs Chrome or Edge on a computer.
+
+### Limits worth knowing
+
+- Transcription is a draft, not an edition. Expect to correct rhythms, voices and fingerings, especially in fast or dense passages.
+- The smallest note value is a sixteenth; triplets are not detected automatically (they can be entered by hand).
+- The check confirms that the written pitches are in the recording at the right time. It cannot tell a ringing string from one plucked again, or an octave doubling from an overtone.
+- The original recording stays in the browser session; only the score is saved to your library.
+
+## Firebase setup
+
+Sign-in and the score library use the `luthierspen` Firebase project (`src/firebase.ts`). In the Firebase console:
+
+1. Authentication, Sign-in method: enable **Google** and **Email/Password**.
+2. Authentication, Settings, Authorized domains: add `mendus59.github.io`.
+3. Firestore Database: create a database and publish the rules in [`firestore.rules`](firestore.rules), which give each signed-in user access to their own scores only.
+
+## Development
+
+```sh
+npm install
+npm run dev      # http://localhost:5173/LuthiersPen/
+npm test         # pipeline tests
+npm run build    # production build in dist/
+```
+
+Pushing to `main` builds and deploys to GitHub Pages (`.github/workflows/deploy.yml`). The repository's Pages source must be set to **GitHub Actions**.
