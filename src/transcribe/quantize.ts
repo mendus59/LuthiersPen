@@ -171,7 +171,9 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
     while (pitch > high) pitch -= 12
     const startPos = (timeToBeats(opts.timing, e.start) - origin) * spb
     const endPos = (timeToBeats(opts.timing, e.start + e.duration) - origin) * spb
-    const step = Math.round(startPos / unit) * unit
+    let step = Math.round(startPos / unit) * unit
+    // A first note just ahead of the first beat is that beat played early, not a note to lose.
+    if (step < 0 && step >= -spb / 2) step = 0
     if (step < 0) continue
     let end = Math.max(step + unit, Math.round(endPos / unit) * unit)
     // A tie of one grid unit over the barline is rounding noise, not music.
@@ -186,17 +188,41 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
       seen.set(key, { step, end, pitch, amplitude: e.amplitude, bass: false, string: 0, fret: 0 })
     }
   }
+  // A bass note on the last grid step of a measure, with no bass on the barline that follows,
+  // is the next downbeat played a touch early.
+  const bassRange = tuning[tuning.length - 3] + 2
+  for (const n of [...seen.values()]) {
+    if (n.pitch > bassRange || n.step % spm !== spm - unit) continue
+    const barline = n.step + unit
+    if ([...seen.values()].some((o) => o.step === barline && o.pitch <= bassRange)) continue
+    seen.delete(`${n.step}:${n.pitch}`)
+    n.step = barline
+    n.end = Math.max(n.end, barline + unit)
+    seen.set(`${n.step}:${n.pitch}`, n)
+  }
   let grid = [...seen.values()].sort((a, b) => a.step - b.step || a.pitch - b.pitch)
 
-  // 2. Voices: low notes, and the bottom of a chord, go to the thumb's voice.
+  // 2. Voices, the way an edition prints them: the bass voice holds only the notes that carry
+  //    the harmony (low notes on the beat, and the bottom of a chord); everything else, even a
+  //    low note inside an arpeggio that rises from the bass, runs on in the upper voice.
   if (opts.twoVoices) {
     const byStep = new Map<number, GridNote[]>()
     for (const n of grid) byStep.set(n.step, [...(byStep.get(n.step) ?? []), n])
-    const bassTop = tuning[tuning.length - 3] + 2 // E on the fourth string
-    for (const group of byStep.values()) {
-      for (const n of group) if (n.pitch <= bassTop) n.bass = true
+    const bassTop = bassRange // E on the fourth string
+    let lastBass: GridNote | null = null
+    for (const step of [...byStep.keys()].sort((x, y) => x - y)) {
+      const group = byStep.get(step)!
       const lowest = group[0]
-      if (group.length > 1 && !lowest.bass && lowest.pitch <= bassTop + 3) lowest.bass = true
+      const onBeat = step % spb === 0
+      // Above a bass note already sounding in this measure: part of the figure that rises from
+      // it, not a new bass. A bass line that walks by step on the beat is still a bass line.
+      const sameBar = lastBass !== null && Math.floor(lastBass.step / spm) === Math.floor(step / spm)
+      const rise = lastBass ? lowest.pitch - lastBass.pitch : 0
+      const figure = sameBar && rise > 0 && (!onBeat || rise >= 3)
+      if (lowest.pitch <= bassTop ? !figure : group.length > 1 && onBeat && lowest.pitch <= bassTop + 3) {
+        lowest.bass = true
+        lastBass = lowest
+      }
     }
   }
 
@@ -266,6 +292,14 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
       if (len > plain && len < gap) len = plain
       len = Math.max(unit, Math.min(len, Math.max(spm, sustain)))
       if (gap !== Infinity) len = Math.min(len, gap)
+      const barEnd = spm - (step % spm)
+      if (vi === 1 && opts.twoVoices) {
+        // A bass note rings until the next one, or to the barline.
+        len = Math.min(gap, barEnd)
+      } else if (gap <= spb && splitSpan(step % spm, Math.min(gap, barEnd), false, spb).length === 1) {
+        // In a run of plucked notes each one lasts until the next: no rests between them.
+        len = Math.min(gap, barEnd)
+      }
       if (step > cursor) emit(cursor, step, null)
       emit(step, step + len, chord)
       cursor = step + len
