@@ -6,7 +6,7 @@
      See CLAUDE.md ("Site summary"). -->
 Turn a solo guitar recording into classical guitar sheet music you can play back, check against the original and edit, all in the browser.
 
-- Transcribe an audio file, a YouTube video played in the page, or your microphone into standard classical guitar notation; nothing is uploaded.
+- Transcribe an audio file, a YouTube video played in the page, or your microphone into classical guitar notation, with tempo, meter and key worked out for you.
 - Scores are engraved like a published edition: notation over tablature, two voices, fingerings, string numbers, barre brackets and chord names.
 - Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
 - Check the transcription: every written note is looked up in the recording, and doubtful notes and measures are marked in the score.
@@ -24,7 +24,7 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 | --- | --- | --- |
 | Listen | Spotify's [Basic Pitch](https://github.com/spotify/basic-pitch) model (TensorFlow.js) finds the notes in the recording. A note is kept only if its partials jump in the recording at its onset, so a string that is merely still ringing is not written again; overtones reported as notes are removed the same way. | `src/transcribe/detect.ts`, `clean.ts` |
 | Find the beat | A dynamic-programming beat tracker follows the performance, so rubato does not push notes off the grid. | `src/transcribe/tempo.ts` |
-| Write it down | Notes are quantized, split into melody and bass voices, barred, and given note values and rests. | `src/transcribe/quantize.ts` |
+| Write it down | The meter is heard from how often the bass returns (4/4, 3/4 or 3/8), and the barlines are kept on the bass even where the player lingers. Notes are then quantized, split into melody and bass voices, and given note values and rests. | `src/transcribe/quantize.ts` |
 | Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
 | Engrave and play | [alphaTab](https://alphatab.net) draws the notation and plays it with a nylon-guitar soundfont. | `src/model/toAlphaTab.ts`, `src/components/ScoreView.tsx` |
 | Check | Each note the score will play is looked up in the recording at that moment (its partials must stand clear of the neighbouring semitones), and each note heard must be in the score. | `src/verify/` |
@@ -36,6 +36,7 @@ A static website cannot download the audio of a YouTube video. Instead the video
 ### Limits worth knowing
 
 - Transcription is a draft, not an edition. Expect to correct rhythms, voices and fingerings, especially in fast or dense passages.
+- Only 4/4, 3/4 and 3/8 are recognised by ear; pick any other time signature from the list. Repeats are written out.
 - The smallest note value is a sixteenth; triplets are not detected automatically (they can be entered by hand).
 - The check confirms that the written pitches are in the recording at the right time. It cannot tell a ringing string from one plucked again, or an octave doubling from an overtone.
 - The original recording stays in the browser session; only the score is saved to your library.

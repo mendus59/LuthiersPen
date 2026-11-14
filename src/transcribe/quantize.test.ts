@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { measureTicks, notePitch, voiceTicks } from '../model/score'
-import { guessKey, quantize } from './quantize'
-import { timingTempo, trackBeats } from './tempo'
+import { alignBars, guessKey, guessMeter, quantize } from './quantize'
+import { type Timing, timingTempo, trackBeats } from './tempo'
 import type { NoteEvent } from './types'
 
 /** An arpeggio study at a given tempo: bass on the beat, three treble sixteenths after it. */
@@ -57,4 +57,40 @@ describe('transcription pipeline', () => {
   it('guesses A minor / C major as no sharps', () => {
     expect(guessKey(study(90, 4))).toBe(0)
   })
+})
+
+/** A bass note on every downbeat and a higher note on every other beat. */
+function barsOf(lengths: number[], beat: number): { events: NoteEvent[]; timing: Timing } {
+  const events: NoteEvent[] = []
+  const beatTimes: number[] = []
+  let t = 1
+  for (const length of lengths) {
+    for (let i = 0; i < length; i++) {
+      events.push({ start: t, duration: beat, pitch: i === 0 ? 45 : 64, amplitude: 0.8 })
+      beatTimes.push(t)
+      t += beat
+    }
+  }
+  return { events, timing: { beatTimes } }
+}
+
+it('hears triple time from the bass and writes a quick three as 3/8', () => {
+  const quick = barsOf(new Array(12).fill(3), 0.45)
+  expect(guessMeter(quick.events, quick.timing)).toEqual([3, 8])
+  const slow = barsOf(new Array(12).fill(3), 0.7)
+  expect(guessMeter(slow.events, slow.timing)).toEqual([3, 4])
+  const common = barsOf(new Array(12).fill(4), 0.5)
+  expect(guessMeter(common.events, common.timing)).toEqual([4, 4])
+})
+
+it('keeps the barlines on the bass when the pulse gains a beat', () => {
+  // The fourth measure was tracked as five beats (a held note); the pickup is one beat.
+  const { events, timing } = barsOf([1, 4, 4, 4, 5, 4, 4, 4, 4], 0.5)
+  const fit = alignBars(events, timing, 4)
+  expect(fit.pickup).toBe(1)
+  expect(fit.timing.beatTimes.length).toBe(timing.beatTimes.length - 1)
+  const { score } = quantize(events, { timing: fit.timing, timeSig: [4, 4], pickupBeats: fit.pickup, twoVoices: false, grid: 16, key: 0, title: '', composer: '' })
+  // Every full measure starts with the bass note.
+  const firsts = score.measures.slice(1).map((m) => m.voices[0][0].notes.map((n) => notePitch(score, n)))
+  expect(firsts.every((p) => p.includes(45))).toBe(true)
 })
