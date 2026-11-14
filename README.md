@@ -22,7 +22,7 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 
 | Step | What happens | Where |
 | --- | --- | --- |
-| Listen | Spotify's [Basic Pitch](https://github.com/spotify/basic-pitch) model (TensorFlow.js) finds the notes in the recording. Ringing strings reported as re-plucked and overtones reported as notes are removed by going back to the audio. | `src/transcribe/detect.ts`, `clean.ts` |
+| Listen | Spotify's [Basic Pitch](https://github.com/spotify/basic-pitch) model (TensorFlow.js) finds the notes in the recording. A note is kept only if its partials jump in the recording at its onset, so a string that is merely still ringing is not written again; overtones reported as notes are removed the same way. | `src/transcribe/detect.ts`, `clean.ts` |
 | Find the beat | A dynamic-programming beat tracker follows the performance, so rubato does not push notes off the grid. | `src/transcribe/tempo.ts` |
 | Write it down | Notes are quantized, split into melody and bass voices, barred, and given note values and rests. | `src/transcribe/quantize.ts` |
 | Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
