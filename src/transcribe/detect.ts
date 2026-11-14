@@ -1,3 +1,5 @@
+import { MODEL_RATE } from './audio'
+import { pickNotes } from './filter'
 import type { NoteEvent } from './types'
 
 /**
@@ -19,10 +21,9 @@ export async function detectNotes(mono: Float32Array, onProgress: (fraction: num
     },
     onProgress,
   )
-  // Thresholds tuned for plucked nylon strings: a clear attack, then a quick decay.
-  const raw = outputToNotesPoly(frames, onsets, 0.6, 0.3, 5, true, 1400, 70, true)
+  // Ask for more candidates than the detector is sure of; pickNotes decides which were played.
+  const raw = outputToNotesPoly(frames, onsets, 0.4, 0.3, 5, true, 1400, 70, true)
   const timed = noteFramesToTime(addPitchBendsToNoteEvents(contours, raw))
-  return timed
-    .map((n) => ({ start: n.startTimeSeconds, duration: n.durationSeconds, pitch: n.pitchMidi, amplitude: n.amplitude }))
-    .sort((a, b) => a.start - b.start)
+  const cands = timed.map((n, i) => ({ start: n.startTimeSeconds, duration: n.durationSeconds, pitch: n.pitchMidi, amplitude: n.amplitude, frame: raw[i].startFrame }))
+  return pickNotes(cands, frames, onsets, mono, MODEL_RATE)
 }

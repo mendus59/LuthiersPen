@@ -10,7 +10,6 @@ import * as ed from './model/edit'
 import { type Dur, type Score, newScore, notePitch } from './model/score'
 import type { RenderOptions } from './model/toAlphaTab'
 import { MODEL_RATE, decodeToMono, monoToWav } from './transcribe/audio'
-import { cleanEvents } from './transcribe/clean'
 import { detectNotes } from './transcribe/detect'
 import { alignBars, guessKey, guessMeter, quantize, stepsPerBeat, stepsPerMeasure } from './transcribe/quantize'
 import { type Timing, beatsToTime, rescaleTiming, timingTempo, trackBeats } from './transcribe/tempo'
@@ -152,7 +151,7 @@ export default function App() {
         const mono = range ? whole.slice(Math.round(range.from * MODEL_RATE), Number.isFinite(range.to) ? Math.round(range.to * MODEL_RATE) : undefined) : whole
         if (mono.length < MODEL_RATE) throw new Error('That recording is too short to transcribe.')
         setBusy('Listening for notes…')
-        const events = cleanEvents(await detectNotes(mono, setProgress), mono, MODEL_RATE)
+        const events = await detectNotes(mono, setProgress)
         if (events.length < 4) throw new Error('No guitar notes were found in that recording.')
         const rec: Recording = { name, mono, url: URL.createObjectURL(monoToWav(mono)), events, timing: trackBeats(events), key: guessKey(events) }
         setRecording((old) => {
