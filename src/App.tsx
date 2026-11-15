@@ -382,6 +382,9 @@ export default function App() {
             <circle cx="8" cy="24" r="4.5" fill="currentColor" />
           </svg>
           <span>LuthiersPen</span>
+          <span className="version" title={`Commit ${__APP_COMMIT__}, built ${__APP_BUILT__}`}>
+            v{__APP_VERSION__} · {__APP_COMMIT__}
+          </span>
         </div>
         <div className="titles">
           <input className="title" aria-label="Title" value={score.title} placeholder="Title" onChange={(e) => setScore({ ...score, title: e.target.value })} />
