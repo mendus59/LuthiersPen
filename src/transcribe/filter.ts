@@ -1,9 +1,10 @@
 import model from './note-model.json'
 import { FEATURE_NAMES, noteFeatures, type Candidate } from './features'
+import { repeatFeatures, withRepeats } from './repeats'
 import type { NoteEvent } from './types'
 
-/** A candidate is written down when the model gives it at least this chance of being a played note. */
-const KEEP = 0.3
+/** A candidate is written down when, with its repeats considered, it has at least this chance of being a played note. */
+const KEEP = 0.35
 /** One pluck is sometimes proposed twice, a moment apart. */
 const SAME_PLUCK = 0.1
 /** A rejected candidate this soon after a kept note of its pitch is that note still ringing. */
@@ -42,15 +43,19 @@ export function noteChance(features: number[]): number {
  * Choose the played notes among the detector's candidates. The detector is asked for more
  * candidates than it is sure of, so that soft and re-plucked notes are not lost; this decides
  * which of them are real, drops one pluck reported twice, and lets a ringing string ring on.
+ * Each candidate is judged on its own first, then again with what the same spot in repeated
+ * passages says, so a phrase that comes back is written the same way where the playing allows.
  */
 export function pickNotes(cands: Candidate[], frames: number[][], onsets: number[][], mono: Float32Array, rate: number): NoteEvent[] {
   const features = noteFeatures(cands, frames, onsets, mono, rate)
+  const own = features.map(noteChance)
+  const chances = withRepeats(own, repeatFeatures(cands.map((c) => c.start), cands.map((c) => c.pitch), own))
   const order = cands.map((_, i) => i).sort((a, b) => cands[a].start - cands[b].start)
   const last = new Map<number, { note: NoteEvent; chance: number }>()
   const kept: { note: NoteEvent; chance: number }[] = []
   for (const i of order) {
     const c = cands[i]
-    const chance = noteChance(features[i])
+    const chance = chances[i]
     const before = last.get(c.pitch)
     if (chance < KEEP) {
       if (before && c.start - (before.note.start + before.note.duration) < RING_ON) {
