@@ -13,6 +13,7 @@ export const FEATURE_NAMES = [
   'together', 'ampRank', 'riseRel', 'onsetRel',
   'below12', 'below19', 'below24', 'above12', 'above19', 'ownPartials',
   'sameStronger', 'sameDist', 'onsetVsSame', 'sameCount', 'otherOnset', 'otherRise',
+  'subOctave', 'subOctaveRise', 'subTwelfth', 'subTwelfthRise',
 ] as const
 
 const FLOOR = 2e-5
@@ -57,7 +58,15 @@ export function noteFeatures(cands: Candidate[], frames: number[][], onsets: num
     const riseLong = squash(rise(mono, rate, c.start, f0, 0.12))
     let level = 0
     for (let h = 1; h <= 3; h++) level += partial(mono, rate, c.start, 0.1, f0 * h)
-    return { onsetPeak, onsetMean: onsetMean / Math.max(1, count), framePeak, frameBefore, rises, riseMid: [...rises].sort((a, b) => a - b)[1], riseLong, level: Math.log(level / 3 + FLOOR) }
+    // Could this be an overtone of a string an octave or a twelfth lower? Then that string's
+    // other partials are in the recording too, and begin at the same moment.
+    const below = (parts: number[], base: number) => {
+      let sum = 0
+      for (const h of parts) sum += partial(mono, rate, c.start, 0.1, base * h)
+      return Math.log(sum / parts.length + FLOOR) - Math.log(level / 3 + FLOOR)
+    }
+    const sub = [below([1, 3, 5], f0 / 2), squash(rise(mono, rate, c.start, f0 / 2, 0.06)), below([1, 2, 4], f0 / 3), squash(rise(mono, rate, c.start, f0 / 3, 0.06))]
+    return { sub, onsetPeak, onsetMean: onsetMean / Math.max(1, count), framePeak, frameBefore, rises, riseMid: [...rises].sort((a, b) => a - b)[1], riseLong, level: Math.log(level / 3 + FLOOR) }
   })
   const out: number[][] = new Array(cands.length)
   const lastOfPitch = new Map<number, number>()
@@ -145,6 +154,7 @@ export function noteFeatures(cands: Candidate[], frames: number[][], onsets: num
       group.length, group.filter((j) => cands[j].amplitude > c.amplitude).length, o.riseMid - maxRise, o.onsetPeak - maxOnset,
       related(-12), related(-19), related(-24), related(12), related(19), ownPart,
       sameStronger - o.onsetPeak, sameDist, o.onsetPeak - typical, sameOnsets.length, otherOnset, otherRise,
+      ...o.sub,
     ]
   }
   return out

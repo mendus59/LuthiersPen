@@ -3,7 +3,7 @@ import { FEATURE_NAMES, noteFeatures, type Candidate } from './features'
 import type { NoteEvent } from './types'
 
 /** A candidate is written down when the model gives it at least this chance of being a played note. */
-const KEEP = 0.25
+const KEEP = 0.3
 /** One pluck is sometimes proposed twice, a moment apart. */
 const SAME_PLUCK = 0.1
 /** A rejected candidate this soon after a kept note of its pitch is that note still ringing. */
@@ -25,7 +25,7 @@ if (model.features.join() !== FEATURE_NAMES.join()) throw new Error('note-model.
 
 /**
  * The chance that a candidate is a note the guitarist played, from what is known about it
- * (see noteFeatures). The model is two hundred small decision trees, fitted on recordings
+ * (see noteFeatures). The model is three hundred small decision trees, fitted on recordings
  * whose tablature is known.
  */
 export function noteChance(features: number[]): number {
