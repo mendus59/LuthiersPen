@@ -39,15 +39,15 @@ A static website cannot download the audio of a YouTube video. Instead the video
 
 ### Measured accuracy
 
-Checked against published tablature, comparing the order of pitches. Four guitar lesson videos (Barrios, La Catedral; The Sound of Silence; Chopin, Waltz Op. 69 No. 2; Both Sides Now), opening bars of the full-speed performance, 384 notes in all:
+Checked against the tablature shown in 15 guitar lesson videos, whole performances at full speed, 9,452 notes in all. The tablature is read from the video automatically and the written pitches are compared with it in order.
 
 | | Notes found | Written notes correct |
 |---|---|---|
-| Note model fitted on all recordings (as shipped) | 98.2% | 98.2% |
-| Each video scored by a model that never saw it | 95.3% | 96.1% |
-| Before the note model | 93.5% | 90.9% |
+| Note model fitted on all 15 (as shipped) | 96.4% | 97.8% |
+| Each video scored by a model that never saw it | 94.0% | 95.8% |
+| Previous note model, fitted on the opening bars of four videos | 93.6% | 92.0% |
 
-The second row is the fairer guide to a new recording. Rhythm, voices and fingering are not part of these figures.
+The second row is the fairer guide to a new recording. It varies by piece, from about 87% of notes found in dense strummed chords and fast repeated notes to 98% in clear arpeggios. About 2% of the notes are never proposed by the detector at all, so no filter can recover them. Rhythm, voices and fingering are not part of these figures.
 
 ### Limits worth knowing
 
