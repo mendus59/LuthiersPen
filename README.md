@@ -22,7 +22,7 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 
 | Step | What happens | Where |
 | --- | --- | --- |
-| Listen | Spotify's [Basic Pitch](https://github.com/spotify/basic-pitch) model (TensorFlow.js), with its final layers retrained on the guitar lesson videos below, proposes candidate notes, more of them than it is sure of. A small model of decision trees then decides which were really played, from how the detector rated each candidate, how its partials rise in the recording at its onset, and the candidates around it. This keeps soft and re-plucked notes while leaving out strings that are merely still ringing, overtones, and one pluck heard twice. | `src/transcribe/detect.ts`, `features.ts`, `filter.ts`, `note-model.json` |
+| Listen | Spotify's [Basic Pitch](https://github.com/spotify/basic-pitch) model (TensorFlow.js), with its final layers retrained on the guitar lesson videos below, proposes candidate notes, more of them than it is sure of. A small model of decision trees then decides which were really played, from how the detector rated each candidate, how its partials rise in the recording at its onset, and the candidates around it. Each candidate is then judged again against the same spot in passages that repeat, so a phrase that comes back is written the same way where the playing allows. This keeps soft and re-plucked notes while leaving out strings that are merely still ringing, overtones, and one pluck heard twice. | `src/transcribe/detect.ts`, `features.ts`, `filter.ts`, `note-model.json`, `repeats.ts` |
 | Find the beat | A dynamic-programming beat tracker follows the performance, so rubato does not push notes off the grid. | `src/transcribe/tempo.ts` |
 | Write it down | The meter is heard from how often the bass returns (4/4, 3/4 or 3/8), and the barlines are kept on the bass even where the player lingers. Notes are then quantized and split into two voices as an edition prints them: the bass voice holds only the notes that carry the harmony and lets them ring to the next one or the barline, while everything above runs on in the upper voice. | `src/transcribe/quantize.ts` |
 | Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
@@ -43,7 +43,8 @@ Checked against the tablature shown in 15 guitar lesson videos, whole performanc
 
 | | Notes found | Written notes correct |
 |---|---|---|
-| Guitar-trained detector and note model (as shipped) | 94.5% | 96.1% |
+| Guitar-trained detector, note model and repeat check (as shipped) | 94.5% | 96.6% |
+| The same without the repeat check | 94.5% | 96.1% |
 | Original detector with the previous note model | 94.2% | 95.9% |
 | First note model, fitted on the opening bars of four videos | 93.6% | 92.0% |
 
