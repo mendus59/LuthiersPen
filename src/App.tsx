@@ -11,7 +11,8 @@ import { type Dur, type Score, newScore, notePitch } from './model/score'
 import type { RenderOptions } from './model/toAlphaTab'
 import { MODEL_RATE, decodeToMono, monoToWav } from './transcribe/audio'
 import { detectNotes } from './transcribe/detect'
-import { alignBars, guessKey, guessMeter, quantize, stepsPerBeat, stepsPerMeasure } from './transcribe/quantize'
+import { fitBars } from './transcribe/bars'
+import { guessKey, guessMeter, hearSwing, quantize, stepsPerBeat } from './transcribe/quantize'
 import { type Timing, beatsToTime, rescaleTiming, timingTempo, trackBeats } from './transcribe/tempo'
 import type { NoteEvent } from './transcribe/types'
 import { type VerifyResult, verify } from './verify/verify'
@@ -122,14 +123,15 @@ export default function App() {
   const requantize = useCallback(
     (rec: Recording, s: TranscribeSettings, title?: string) => {
       const heard = s.pulse === 1 ? rec.timing : rescaleTiming(rec.timing, s.pulse)
-      // Unless the pickup is fixed by hand, let the bass place the barlines.
-      const fit = s.pickup >= 0 ? { timing: heard, pickup: s.pickup } : alignBars(rec.events, heard, stepsPerMeasure(s.timeSig) / stepsPerBeat(s.timeSig))
+      // Unless the pickup is fixed by hand, follow the bars of the performance to place the barlines.
+      const fit = s.pickup >= 0 ? { timing: heard, pickup: s.pickup } : fitBars(rec.events, heard, s.timeSig)
       const { timing, pickup } = fit
       const out = quantize(rec.events, {
         timing,
         timeSig: s.timeSig,
         pickupBeats: pickup,
         twoVoices: s.twoVoices,
+        swing: hearSwing(rec.events, timing),
         grid: s.grid,
         key: rec.key,
         title: title ?? scoreRef.current.title,
@@ -175,7 +177,7 @@ export default function App() {
   const detected = useMemo(() => {
     if (!recording) return null
     const timing = settings.pulse === 1 ? recording.timing : rescaleTiming(recording.timing, settings.pulse)
-    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: alignBars(recording.events, timing, stepsPerMeasure(settings.timeSig) / stepsPerBeat(settings.timeSig)).pickup }
+    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: fitBars(recording.events, timing, settings.timeSig).pickup }
   }, [recording, settings.pulse, settings.timeSig])
 
   // ---- verification -------------------------------------------------------------------------
