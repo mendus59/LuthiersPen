@@ -1,6 +1,8 @@
 import * as ed from '../model/edit'
 import { type Dur, type RhFinger, type Score, notePitch, pitchName } from '../model/score'
 
+const SIGS = ['4/4', '3/4', '2/4', '6/8', '3/8', '9/8', '12/8', '2/2']
+
 interface Props {
   score: Score
   selection: ed.Selection | null
@@ -66,7 +68,7 @@ export function EditPanel({ score, selection: sel, apply, setScore, select, undo
             value={score.timeSig.join('/')}
             onChange={(e) => setScore({ ...score, timeSig: e.target.value.split('/').map(Number) as [number, number] })}
           >
-            {['4/4', '3/4', '2/4', '6/8', '3/8', '9/8', '12/8', '2/2'].map((x) => <option key={x}>{x}</option>)}
+            {SIGS.map((x) => <option key={x}>{x}</option>)}
           </select>
         </label>
         <label>
@@ -189,6 +191,13 @@ export function EditPanel({ score, selection: sel, apply, setScore, select, undo
           </div>
           <div className="label">Measure</div>
           <div className="row wrap">
+            <select
+              title="Time signature of this measure only"
+              value={(score.measures[sel.m]?.timeSig ?? score.timeSig).join('/')}
+              onChange={(e) => apply(ed.setMeasureTimeSig(score, sel.m, e.target.value.split('/').map(Number) as [number, number]))}
+            >
+              {[...new Set([score.timeSig.join('/'), ...SIGS, '1/4', '5/4'])].map((x) => <option key={x}>{x}</option>)}
+            </select>
             <button onClick={() => apply(ed.addMeasure(score, sel.m))}>Add after</button>
             <button onClick={() => apply(ed.deleteMeasure(score, sel.m))}>Delete</button>
             {hasBass ? (

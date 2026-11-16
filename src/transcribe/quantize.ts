@@ -12,6 +12,11 @@ export interface QuantizeOptions {
   twoVoices: boolean
   /** Swung eighths: the second of each pair of eighths is played late and written straight. */
   swing?: boolean
+  /**
+   * Beats in each measure from measure 1 (the pickup measure included), where some are shorter or
+   * longer than the time signature's; measures past the end of the list are regular.
+   */
+  barBeats?: number[]
   /** Smallest note value. */
   grid: 8 | 16
   key?: number
@@ -136,6 +141,20 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
   const origin = opts.pickupBeats > 0 ? opts.pickupBeats - beatsPerMeasure * Math.ceil(opts.pickupBeats / beatsPerMeasure) : 0
   const low = tuning[tuning.length - 1]
   const high = tuning[0] + MAX_FRET
+  // Where each measure starts and how long it is, in grid steps.
+  const lens = (opts.barBeats ?? []).map((b) => b * spb)
+  const starts = [0]
+  for (const l of lens) starts.push(starts[starts.length - 1] + l)
+  const listed = starts[starts.length - 1]
+  const lenOf = (mi: number) => lens[mi] ?? spm
+  const barStart = (mi: number) => (mi < starts.length ? starts[mi] : listed + (mi - lens.length) * spm)
+  const barOf = (step: number) => {
+    if (step >= listed) return lens.length + Math.floor((step - listed) / spm)
+    let mi = 0
+    while (starts[mi + 1] <= step) mi++
+    return mi
+  }
+  const inBar = (step: number) => step - barStart(barOf(step))
 
   // 1. Onto the grid.
   const seen = new Map<string, GridNote>()
@@ -152,7 +171,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
     if (step < 0) continue
     let end = Math.max(step + unit, Math.round(endPos / unit) * unit)
     // A tie of one grid unit over the barline is rounding noise, not music.
-    const over = end % spm
+    const over = inBar(end)
     if (over > 0 && over <= unit && end - over > step) end -= over
     const key = `${step}:${pitch}`
     const old = seen.get(key)
@@ -167,7 +186,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
   // is the next downbeat played a touch early.
   const bassRange = tuning[tuning.length - 3] + 2
   for (const n of [...seen.values()]) {
-    if (n.pitch > bassRange || n.step % spm !== spm - unit) continue
+    if (n.pitch > bassRange || inBar(n.step) !== lenOf(barOf(n.step)) - unit) continue
     const barline = n.step + unit
     if ([...seen.values()].some((o) => o.step === barline && o.pitch <= bassRange)) continue
     seen.delete(`${n.step}:${n.pitch}`)
@@ -191,7 +210,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
       const onBeat = step % spb === 0
       // Above a bass note already sounding in this measure: part of the figure that rises from
       // it, not a new bass. A bass line that walks by step on the beat is still a bass line.
-      const sameBar = lastBass !== null && Math.floor(lastBass.step / spm) === Math.floor(step / spm)
+      const sameBar = lastBass !== null && barOf(lastBass.step) === barOf(step)
       const rise = lastBass ? lowest.pitch - lastBass.pitch : 0
       const figure = sameBar && rise > 0 && (!onBeat || rise >= 3)
       if (lowest.pitch <= bassTop ? !figure : group.length > 1 && onBeat && lowest.pitch <= bassTop + 3) {
@@ -208,7 +227,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
 
   // 4. Measures and beats.
   const last = grid.reduce((mx, n) => Math.max(mx, n.end), 0)
-  const measureCount = Math.max(1, Math.ceil(last / spm))
+  const measureCount = Math.max(1, last > 0 ? barOf(last - 1) + 1 : 1)
   const measures: Measure[] = Array.from({ length: measureCount }, () => ({ voices: opts.twoVoices ? [[], []] : [[]] }))
   const usedMarks = new Set<number>()
 
@@ -221,10 +240,10 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
       let pos = from
       let first = true
       while (pos < to) {
-        const mi = Math.floor(pos / spm)
-        const inBar = pos - mi * spm
-        const len = Math.min(to - pos, spm - inBar)
-        for (const piece of splitSpan(inBar, len, chord === null, spb)) {
+        const mi = barOf(pos)
+        const into = pos - barStart(mi)
+        const len = Math.min(to - pos, lenOf(mi) - into)
+        for (const piece of splitSpan(into, len, chord === null, spb)) {
           const beat: Beat = { dur: piece.dur, notes: [] }
           if (piece.dots) beat.dots = piece.dots
           if (chord) {
@@ -262,16 +281,16 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
       const gap = next - step
       // Plucked notes are written as one plain value where possible; a tie is only worth its
       // ink when the note really is held for (nearly) the whole gap.
-      const plain = splitSpan(step % spm, Math.min(gap === Infinity ? sustain : gap, spm - (step % spm)), false, spb)[0].len
+      const barEnd = lenOf(barOf(step)) - inBar(step)
+      const plain = splitSpan(inBar(step), Math.min(gap === Infinity ? sustain : gap, barEnd), false, spb)[0].len
       let len = gap === Infinity ? sustain : sustain >= gap * 0.85 ? gap : sustain >= plain * 0.6 ? Math.max(plain, Math.min(sustain, gap)) : sustain
       if (len > plain && len < gap) len = plain
-      len = Math.max(unit, Math.min(len, Math.max(spm, sustain)))
+      len = Math.max(unit, Math.min(len, Math.max(lenOf(barOf(step)), sustain)))
       if (gap !== Infinity) len = Math.min(len, gap)
-      const barEnd = spm - (step % spm)
       if (vi === 1 && opts.twoVoices) {
         // A bass note rings until the next one, or to the barline.
         len = Math.min(gap, barEnd)
-      } else if (gap <= spb && splitSpan(step % spm, Math.min(gap, barEnd), false, spb).length === 1) {
+      } else if (gap <= spb && splitSpan(inBar(step), Math.min(gap, barEnd), false, spb).length === 1) {
         // In a run of plucked notes each one lasts until the next: no rests between them.
         len = Math.min(gap, barEnd)
       }
@@ -280,8 +299,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
       cursor = step + len
     })
     // Complete the last measure this voice touches.
-    const endOfBar = Math.ceil(cursor / spm) * spm
-    if (cursor < endOfBar) emit(cursor, endOfBar, null)
+    if (cursor > 0 && inBar(cursor) !== 0) emit(cursor, barStart(barOf(cursor) + 1), null)
   }
 
   if (opts.twoVoices) {
@@ -311,7 +329,11 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
   while (measures.length > 1 && measures[measures.length - 1].voices.every((v) => v.every((b) => b.notes.every((n) => n.tie)))) measures.pop()
 
   // Beat times re-based to measure 1, long enough to cover the whole score.
-  const totalBeats = measures.length * beatsPerMeasure
+  const totalBeats = barStart(measures.length) / spb
+  // A measure of another length carries its own time signature.
+  measures.forEach((m, mi) => {
+    if (lenOf(mi) !== spm) m.timeSig = [(opts.timeSig[0] * lenOf(mi)) / spm, opts.timeSig[1]]
+  })
   const beatTimes: number[] = []
   for (let i = 0; i <= totalBeats; i++) beatTimes.push(beatsToTime(opts.timing, origin + i))
 

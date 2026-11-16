@@ -29,6 +29,8 @@ export interface Beat {
 }
 
 export interface Measure {
+  /** A time signature of its own, for a measure shorter or longer than the score's. */
+  timeSig?: [number, number]
   /** voices[0] is the upper voice (stems up), voices[1] the bass voice (stems down). */
   voices: Beat[][]
 }
@@ -68,8 +70,17 @@ export function beatTicks(b: Pick<Beat, 'dur' | 'dots' | 'tuplet'>): number {
   return t
 }
 
-export function measureTicks(score: Pick<Score, 'timeSig'>): number {
-  return (TICKS_PER_QUARTER * 4 * score.timeSig[0]) / score.timeSig[1]
+/** Length of a measure: measure `mi` of the score, or a regular one when no measure is given. */
+export function measureTicks(score: Pick<Score, 'timeSig'> & { measures?: Measure[] }, mi?: number): number {
+  const sig = (mi !== undefined ? score.measures?.[mi]?.timeSig : undefined) ?? score.timeSig
+  return (TICKS_PER_QUARTER * 4 * sig[0]) / sig[1]
+}
+
+/** Where each measure starts, in ticks from the start of measure 1, plus the end of the last. */
+export function measureStarts(score: Score): number[] {
+  const out = [0]
+  score.measures.forEach((_, mi) => out.push(out[mi] + measureTicks(score, mi)))
+  return out
 }
 
 export function voiceTicks(beats: Beat[]): number {
