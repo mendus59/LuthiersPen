@@ -20,7 +20,7 @@ const RH: Record<string, alphaTab.model.Fingers> = {
   m: m.Fingers.MiddleFinger,
   a: m.Fingers.AnnularFinger,
 }
-const LH = [m.Fingers.Unknown, m.Fingers.IndexFinger, m.Fingers.MiddleFinger, m.Fingers.AnnularFinger, m.Fingers.LittleFinger]
+const LH = [m.Fingers.NoOrDead, m.Fingers.IndexFinger, m.Fingers.MiddleFinger, m.Fingers.AnnularFinger, m.Fingers.LittleFinger]
 
 const DOUBT = alphaTab.model.Color.fromJson('#c2410c')
 
@@ -54,6 +54,22 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
   const strings = score.tuning.length
   const twoVoices = score.measures.some((x) => x.voices.length > 1)
   const full = measureTicks(score)
+
+  // Right-hand fingering the way an edition prints it: once for a figure, not again while the next
+  // measures repeat it.
+  const rhFigure = (mi: number) => score.measures[mi].voices.map((v) => v.map((b) => b.notes.map((n) => n.rh ?? '-').join('')).join(' ')).join('|')
+  const rhShown = score.measures.map((_, mi) => mi === 0 || rhFigure(mi) !== rhFigure(mi - 1))
+  // An open string is marked 0 when the same string was just stopped, so the release is not missed.
+  const lastFret = new Map<number, number>()
+  const openZero = new Set<string>()
+  score.measures.forEach((measure, mi) =>
+    measure.voices[0]?.forEach((b, bi) =>
+      b.notes.forEach((n) => {
+        if (n.fret === 0 && !n.tie && (lastFret.get(n.string) ?? 0) > 0) openZero.add(`${mi}:${bi}:${n.string}`)
+        lastFret.set(n.string, n.fret)
+      }),
+    ),
+  )
 
   score.measures.forEach((measure, mi) => {
     const mb = new m.MasterBar()
@@ -123,7 +139,8 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
           note.string = strings - n.string + 1
           if (n.tie) note.isTieDestination = true
           if (opts.showLh && n.lh) note.leftHandFinger = LH[n.lh] ?? m.Fingers.Unknown
-          if (opts.showRh && n.rh) note.rightHandFinger = RH[n.rh]
+          else if (opts.showLh && vi === 0 && openZero.has(`${mi}:${bi}:${n.string}`)) note.leftHandFinger = m.Fingers.NoOrDead
+          if (opts.showRh && n.rh && rhShown[mi]) note.rightHandFinger = RH[n.rh]
           if (opts.showStrings && n.showString) note.showStringNumber = true
           if (opts.doubts?.has(`${mi}:${vi}:${bi}:${n.string}`)) {
             note.style = new m.NoteStyle()
