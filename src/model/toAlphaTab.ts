@@ -55,10 +55,11 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
   const twoVoices = score.measures.some((x) => x.voices.length > 1)
   const full = measureTicks(score)
 
-  // Right-hand fingering the way an edition prints it: once for a figure, not again while the next
-  // measures repeat it.
-  const rhFigure = (mi: number) => score.measures[mi].voices.map((v) => v.map((b) => b.notes.map((n) => n.rh ?? '-').join('')).join(' ')).join('|')
-  const rhShown = score.measures.map((_, mi) => mi === 0 || rhFigure(mi) !== rhFigure(mi - 1))
+  // Right-hand fingering the way an edition prints it: the whole figure at the start, then only
+  // where a finger is not the one the string suggests (thumb on the bass, i-m-a on strings 3-2-1),
+  // such as alternating fingers on one string.
+  const usual = (string: number, bass: boolean) => (bass || string >= 4 ? 'p' : string === 3 ? 'i' : string === 2 ? 'm' : 'a')
+  const rhShown = (mi: number, vi: number, string: number, rh: string) => mi === 0 || rh !== usual(string, vi === 1)
   // An open string is marked 0 when the same string was just stopped, so the release is not missed.
   const lastFret = new Map<number, number>()
   const openZero = new Set<string>()
@@ -140,7 +141,7 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
           if (n.tie) note.isTieDestination = true
           if (opts.showLh && n.lh) note.leftHandFinger = LH[n.lh] ?? m.Fingers.Unknown
           else if (opts.showLh && vi === 0 && openZero.has(`${mi}:${bi}:${n.string}`)) note.leftHandFinger = m.Fingers.NoOrDead
-          if (opts.showRh && n.rh && rhShown[mi]) note.rightHandFinger = RH[n.rh]
+          if (opts.showRh && n.rh && rhShown(mi, vi, n.string, n.rh)) note.rightHandFinger = RH[n.rh]
           if (opts.showStrings && n.showString) note.showStringNumber = true
           if (opts.doubts?.has(`${mi}:${vi}:${bi}:${n.string}`)) {
             note.style = new m.NoteStyle()
