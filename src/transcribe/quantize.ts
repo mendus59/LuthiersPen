@@ -10,6 +10,8 @@ export interface QuantizeOptions {
   pickupBeats: number
   /** Split the bass onto its own stems-down voice. */
   twoVoices: boolean
+  /** Swung eighths: the second of each pair of eighths is played late and written straight. */
+  swing?: boolean
   /** Smallest note value. */
   grid: 8 | 16
   key?: number
@@ -98,57 +100,29 @@ export function guessMeter(notes: NoteEvent[], timing: Timing): [number, number]
   return timingTempo(timing) >= 110 ? [3, 8] : [3, 4]
 }
 
-const SLIP = 1.5
+/** A swung beat is split long-short, two to one; written as straight eighths, the split moves to the middle. */
+function straighten(beats: number): number {
+  const whole = Math.floor(beats)
+  const f = beats - whole
+  return whole + (f <= 2 / 3 ? f * 0.75 : 0.5 + (f - 2 / 3) * 1.5)
+}
 
 /**
- * Put the barlines where the bass says they are. Measures are a fixed number of beats long, but a
- * player who lingers or hurries can make the tracked pulse gain or lose a beat; rather than let
- * every later barline fall in the wrong place, allow a measure to be heard as one beat long or
- * short where the bass clearly asks for it, and stretch or squeeze the pulse there to fit.
- * Returns the corrected pulse and the number of pickup beats before the first downbeat.
+ * Hear whether eighths are swung: notes between beats land two thirds of the way through the beat
+ * rather than halfway.
  */
-export function alignBars(notes: NoteEvent[], timing: Timing, beatsPerMeasure: number): { timing: Timing; pickup: number } {
-  const L = beatsPerMeasure
-  const accents = bassAccents(notes, timing).slice(0, timing.beatTimes.length)
-  const n = accents.length
-  const sorted = accents.filter((a) => a > 0).sort((a, b) => a - b)
-  const scale = sorted.length ? sorted[Math.floor(sorted.length * 0.75)] : 1
-  if (L < 2 || n < 2 * L) return { timing, pickup: 0 }
-  const best = new Array<number>(n).fill(-Infinity)
-  const from = new Array<number>(n).fill(-1)
-  for (let i = 0; i < n; i++) {
-    const own = Math.min(2, accents[i] / scale)
-    if (i < L) best[i] = own - (i === 0 ? 0 : 0.2)
-    for (const len of [L, L - 1, L + 1]) {
-      const j = i - len
-      if (j < 0 || best[j] === -Infinity) continue
-      const v = best[j] + own - (len === L ? 0 : SLIP)
-      if (v > best[i]) {
-        best[i] = v
-        from[i] = j
-      }
-    }
+export function hearSwing(notes: NoteEvent[], timing: Timing): boolean {
+  let half = 0
+  let swung = 0
+  let all = 0
+  for (const n of notes) {
+    const x = timeToBeats(timing, n.start)
+    const f = x - Math.floor(x)
+    all += n.amplitude
+    if (f > 0.44 && f < 0.56) half += n.amplitude
+    if (f > 0.6 && f < 0.72) swung += n.amplitude
   }
-  let end = n - 1
-  for (let i = n - 1; i >= Math.max(0, n - L); i--) if (best[i] > best[end]) end = i
-  const downbeats: number[] = []
-  for (let i = end; i >= 0; i = from[i]) downbeats.push(i)
-  downbeats.reverse()
-  const b = timing.beatTimes
-  const beats: number[] = b.slice(0, downbeats[0])
-  for (let k = 0; k < downbeats.length; k++) {
-    const start = downbeats[k]
-    const stop = k + 1 < downbeats.length ? downbeats[k + 1] : -1
-    if (stop < 0) {
-      beats.push(...b.slice(start))
-    } else if (stop - start === L) {
-      beats.push(...b.slice(start, stop))
-    } else {
-      // An irregular measure: spread the regular number of beats evenly over its time.
-      for (let q = 0; q < L; q++) beats.push(b[start] + ((b[stop] - b[start]) * q) / L)
-    }
-  }
-  return { timing: { beatTimes: beats }, pickup: downbeats[0] }
+  return all > 0 && swung > 0.18 * all && swung > 2 * half
 }
 
 /** Turn detected notes into an engraved score: quantize, split voices, finger, and bar. */
@@ -159,7 +133,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
   const beatsPerMeasure = spm / spb
   const unit = opts.grid === 8 ? 2 : 1
   // Measure 1 starts at this (possibly negative) beat of the tracked pulse.
-  const origin = opts.pickupBeats > 0 ? opts.pickupBeats - beatsPerMeasure : 0
+  const origin = opts.pickupBeats > 0 ? opts.pickupBeats - beatsPerMeasure * Math.ceil(opts.pickupBeats / beatsPerMeasure) : 0
   const low = tuning[tuning.length - 1]
   const high = tuning[0] + MAX_FRET
 
@@ -169,8 +143,9 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
     let pitch = Math.round(e.pitch)
     while (pitch < low) pitch += 12
     while (pitch > high) pitch -= 12
-    const startPos = (timeToBeats(opts.timing, e.start) - origin) * spb
-    const endPos = (timeToBeats(opts.timing, e.start + e.duration) - origin) * spb
+    const at = (sec: number) => (opts.swing ? straighten(timeToBeats(opts.timing, sec)) : timeToBeats(opts.timing, sec))
+    const startPos = (at(e.start) - origin) * spb
+    const endPos = (at(e.start + e.duration) - origin) * spb
     let step = Math.round(startPos / unit) * unit
     // A first note just ahead of the first beat is that beat played early, not a note to lose.
     if (step < 0 && step >= -spb / 2) step = 0
@@ -344,6 +319,7 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
   const score: Score = {
     title: opts.title ?? 'Transcription',
     composer: opts.composer ?? '',
+    ...(opts.swing ? { tempoText: 'Swing' } : {}),
     tempo,
     timeSig: opts.timeSig,
     key: opts.key ?? 0,

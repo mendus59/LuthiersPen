@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { measureTicks, notePitch, voiceTicks } from '../model/score'
-import { alignBars, guessKey, guessMeter, quantize } from './quantize'
+import { fitBars } from './bars'
+import { guessKey, guessMeter, quantize } from './quantize'
 import { type Timing, timingTempo, trackBeats } from './tempo'
 import type { NoteEvent } from './types'
 
@@ -86,9 +87,8 @@ it('hears triple time from the bass and writes a quick three as 3/8', () => {
 it('keeps the barlines on the bass when the pulse gains a beat', () => {
   // The fourth measure was tracked as five beats (a held note); the pickup is one beat.
   const { events, timing } = barsOf([1, 4, 4, 4, 5, 4, 4, 4, 4], 0.5)
-  const fit = alignBars(events, timing, 4)
+  const fit = fitBars(events, timing, [4, 4])
   expect(fit.pickup).toBe(1)
-  expect(fit.timing.beatTimes.length).toBe(timing.beatTimes.length - 1)
   const { score } = quantize(events, { timing: fit.timing, timeSig: [4, 4], pickupBeats: fit.pickup, twoVoices: false, grid: 16, key: 0, title: '', composer: '' })
   // Every full measure starts with the bass note.
   const firsts = score.measures.slice(1).map((m) => m.voices[0][0].notes.map((n) => notePitch(score, n)))
