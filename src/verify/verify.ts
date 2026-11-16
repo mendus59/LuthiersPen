@@ -1,4 +1,4 @@
-import { type Score, beatTicks, measureTicks, notePitch, TICKS_PER_QUARTER } from '../model/score'
+import { type Score, beatTicks, measureStarts, notePitch, TICKS_PER_QUARTER } from '../model/score'
 import { stepsPerBeat } from '../transcribe/quantize'
 import { beatsToTime, type Timing } from '../transcribe/tempo'
 import type { NoteEvent } from '../transcribe/types'
@@ -28,11 +28,11 @@ export const DOUBT = 0.8
 /** When each note of the score sounds on playback, mapped onto the recording's own time. */
 function scoreNotes(score: Score, timing: Timing) {
   const pulseTicks = (TICKS_PER_QUARTER / 4) * stepsPerBeat(score.timeSig)
-  const bar = measureTicks(score)
+  const barStarts = measureStarts(score)
   const out: Array<{ key: string; measure: number; pitch: number; sec: number }> = []
   score.measures.forEach((measure, m) => {
     measure.voices.forEach((voice, v) => {
-      let tick = m * bar
+      let tick = barStarts[m]
       voice.forEach((beat, b) => {
         const sec = beatsToTime(timing, tick / pulseTicks)
         for (const n of beat.notes) if (!n.tie) out.push({ key: `${m}:${v}:${b}:${n.string}`, measure: m, pitch: notePitch(score, n), sec })
@@ -66,7 +66,8 @@ export function verify(score: Score, mono: Float32Array, rate: number, timing: T
 
   // Heard but not written. One sixteenth at the local tempo is the matching window.
   const missing: MissingNote[] = []
-  const starts = score.measures.map((_, m) => beatsToTime(timing, (m * measureTicks(score)) / ((TICKS_PER_QUARTER / 4) * stepsPerBeat(score.timeSig))))
+  const tickStarts = measureStarts(score)
+  const starts = score.measures.map((_, m) => beatsToTime(timing, tickStarts[m] / ((TICKS_PER_QUARTER / 4) * stepsPerBeat(score.timeSig))))
   const window = Math.max(0.08, ((60 / score.tempo) / 4) * 1.1)
   const low = score.tuning[score.tuning.length - 1]
   for (const h of heard) {

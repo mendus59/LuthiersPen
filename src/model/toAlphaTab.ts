@@ -53,7 +53,6 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
 
   const strings = score.tuning.length
   const twoVoices = score.measures.some((x) => x.voices.length > 1)
-  const full = measureTicks(score)
 
   // Right-hand fingering the way an edition prints it: the whole figure at the start, then only
   // where a finger is not the one the string suggests (thumb on the bass, i-m-a on strings 3-2-1),
@@ -74,8 +73,10 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
 
   score.measures.forEach((measure, mi) => {
     const mb = new m.MasterBar()
-    mb.timeSignatureNumerator = score.timeSig[0]
-    mb.timeSignatureDenominator = score.timeSig[1]
+    const sig = measure.timeSig ?? score.timeSig
+    mb.timeSignatureNumerator = sig[0]
+    mb.timeSignatureDenominator = sig[1]
+    const full = measureTicks(score, mi)
     if (mi === 0) {
       const tempo = m.Automation.buildTempoAutomation(false, 0, score.tempo, 2)
       if (score.tempoText) tempo.text = score.tempoText

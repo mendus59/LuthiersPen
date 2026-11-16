@@ -128,6 +128,7 @@ export default function App() {
       const { timing, pickup } = fit
       const out = quantize(rec.events, {
         timing,
+        barBeats: 'barBeats' in fit ? fit.barBeats : undefined,
         timeSig: s.timeSig,
         pickupBeats: pickup,
         twoVoices: s.twoVoices,

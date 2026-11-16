@@ -207,10 +207,29 @@ export function deleteMeasure(score: Score, index: number): Edit | null {
   return { score: s, sel: { m: Math.min(index, s.measures.length - 1), v: 0, b: 0 } }
 }
 
+/**
+ * Give one measure its own time signature (a 2/4 bar inside 4/4), or the score's again when it is
+ * the same; its voices are fitted to the new length.
+ */
+export function setMeasureTimeSig(score: Score, index: number, sig: [number, number]): Edit | null {
+  if (!score.measures[index]) return null
+  const s = cloneScore(score)
+  const m = s.measures[index]
+  if (sig[0] === s.timeSig[0] && sig[1] === s.timeSig[1]) delete m.timeSig
+  else m.timeSig = sig
+  m.voices.forEach((_, v) => {
+    const fitted = fitMeasure(s, { m: index, v, b: 0 })
+    if (fitted) s.measures[index] = fitted.score.measures[index]
+  })
+  return { score: s, sel: { m: index, v: 0, b: 0 } }
+}
+
 /** Make sure every measure has a bass voice, so notes can be written stems-down. */
 export function ensureSecondVoice(score: Score): Score {
   const s = cloneScore(score)
-  for (const m of s.measures) if (m.voices.length < 2 || m.voices[1].length === 0) m.voices[1] = restsFor(measureTicks(s))
+  s.measures.forEach((m, mi) => {
+    if (m.voices.length < 2 || m.voices[1].length === 0) m.voices[1] = restsFor(measureTicks(s, mi))
+  })
   return s
 }
 
@@ -219,7 +238,7 @@ export function fitMeasure(score: Score, sel: Selection): Edit | null {
   const s = cloneScore(score)
   const voice = voiceOf(s, sel)
   if (!s.measures[sel.m]) return null
-  const full = measureTicks(s)
+  const full = measureTicks(s, sel.m)
   while (voice.length > 1 && voiceTicks(voice) > full && voice[voice.length - 1].notes.length === 0) voice.pop()
   const have = voiceTicks(voice)
   if (have < full) voice.push(...restsFor(full - have))
@@ -228,7 +247,7 @@ export function fitMeasure(score: Score, sel: Selection): Edit | null {
 
 /** How a voice compares with the time signature: 0 = exact, negative = short, positive = too long (in ticks). */
 export function measureBalance(score: Score, sel: Selection): number {
-  return voiceTicks(voiceOf(score, sel)) - measureTicks(score)
+  return voiceTicks(voiceOf(score, sel)) - measureTicks(score, sel.m)
 }
 
 export function selectedBeat(score: Score, sel: Selection | null): Beat | undefined {

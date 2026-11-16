@@ -150,22 +150,34 @@ function envelope(notes: NoteEvent[]): Float32Array {
   return env
 }
 
+/** Cost of a bar of another length than the meter's (a 2/4 bar inside 4/4). */
+const ODD = 3
+
+/** Bar lengths, in beats, that may stand in for the meter's own now and then. */
+export function oddBars(beats: number): number[] {
+  if (beats === 4) return [2, 3]
+  if (beats === 3) return [2]
+  return []
+}
+
 /**
  * Find the downbeats of a performance with a bar-sized template instead of beat by beat: each bar
  * is scored by the bass and chords on its downbeat and by how well the other notes fall on an
  * even grid of beats inside it. Bars may stretch and shrink from one to the next (rubato), so the
- * pulse is followed bar by bar rather than held to one tempo.
- * `period` is the expected length of a bar in seconds.
+ * pulse is followed bar by bar rather than held to one tempo, and a bar may now and then be a few
+ * beats short (a 2/4 bar inside 4/4).
+ * `period` is the expected length of a bar in seconds. Returns the downbeats and the number of
+ * beats in each bar between them.
  */
-export function trackBars(notes: NoteEvent[], period: number, meter: Meter): { downs: number[]; score: number } {
-  const on = downbeatOnsets(notes, period, meter.beats)
+export function trackBars(notes: NoteEvent[], period: number, meter: Meter, odd: number[] = []): { downs: number[]; beats: number[]; score: number } {
+  const L = meter.beats
+  const on = downbeatOnsets(notes, period, L)
   for (const o of on) o.down = o.f.reduce((s, x, i) => s + x * downWeights[i], 0)
   const env = envelope(notes)
   const n = on.length
-  if (n < 4) return { downs: on.map((o) => o.t), score: -Infinity }
-  const N = meter.beats * meter.split
-  const weights: number[] = Array.from({ length: N }, (_, q) => (q === 0 ? 0 : q % meter.split === 0 ? 1 : 0.5))
-  const wsum = weights.reduce((a, b) => a + b, 0)
+  if (n < 4) return { downs: on.map((o) => o.t), beats: on.slice(1).map(() => L), score: -Infinity }
+  const sizes = [L, ...odd.filter((b) => b !== L && b >= 1)]
+  const V = sizes.length
   const near = (t: number, tol: number) => {
     const a = Math.max(0, Math.round((t - tol) / RES))
     const b = Math.min(env.length - 1, Math.round((t + tol) / RES))
@@ -173,16 +185,23 @@ export function trackBars(notes: NoteEvent[], period: number, meter: Meter): { d
     for (let i = a; i <= b; i++) if (env[i] > m) m = env[i]
     return m
   }
-  const fit = (a: number, b: number) => {
+  const fit = (a: number, b: number, beats: number) => {
+    const N = beats * meter.split
     const span = b - a
     const tol = Math.min(0.04, (span / N) * 0.25)
     let s = 0
-    for (let q = 1; q < N; q++) s += weights[q] * near(a + (span * q) / N, tol)
-    return s / wsum
+    let w = 0
+    for (let q = 1; q < N; q++) {
+      const weight = q % meter.split === 0 ? 1 : 0.5
+      s += weight * near(a + (span * q) / N, tol)
+      w += weight
+    }
+    return w ? s / w : 0
   }
-  const lo = period * 0.6
+  const beat = period / L
+  const lo = beat * Math.min(...sizes) * 0.6
   const hi = period * 1.6
-  // State (i, j): a bar from onset j to onset i. prev[i] lists the j's in range.
+  // State (i, j, v): a bar of sizes[v] beats from onset j to onset i, keyed j * V + v in maps per i.
   const prevs: number[][] = []
   for (let i = 0; i < n; i++) {
     const list: number[] = []
@@ -190,38 +209,45 @@ export function trackBars(notes: NoteEvent[], period: number, meter: Meter): { d
     prevs.push(list)
   }
   const score: Map<number, number>[] = Array.from({ length: n }, () => new Map())
-  // Back links: [k] continues from bar (j, k); [-1, i2, j2] restarts after the bar (i2, j2) that
-  // ended at or before j (a pause or a bar the template cannot follow); [] is the first bar.
+  // Back links: [key] continues from that bar ending at j; [-1, i2, key2] restarts after the bar
+  // (i2, key2) that ended at or before j (a pause or a bar the template cannot follow); [] is the
+  // first bar.
   const back: Map<number, number[]>[] = Array.from({ length: n }, () => new Map())
   // Best bar ending at or before each onset, for restarts.
-  const bestUpTo: Array<{ v: number; i: number; j: number }> = []
+  const bestUpTo: Array<{ v: number; i: number; key: number }> = []
   const first = on[0].t
   for (let i = 0; i < n; i++) {
     for (const j of prevs[i]) {
       const d = on[i].t - on[j].t
-      const own = on[j].down + fit(on[j].t, on[i].t) - PRIOR * Math.log(d / period) ** 2
-      let best = on[j].t - first <= period * 1.2 ? own : -Infinity
-      let link: number[] = []
-      for (const [k, v] of score[j]) {
-        const r = Math.log(d / (on[j].t - on[k].t))
-        const val = v + own - RATIO * r * r
-        if (val > best) {
-          best = val
-          link = [k]
+      for (let v = 0; v < V; v++) {
+        const size = sizes[v]
+        const expected = beat * size
+        if (d < expected * 0.6 || d > expected * 1.6) continue
+        const own = on[j].down + fit(on[j].t, on[i].t, size) - PRIOR * Math.log(d / expected) ** 2 - (v === 0 ? 0 : ODD)
+        let best = on[j].t - first <= period * 1.2 ? own : -Infinity
+        let link: number[] = []
+        for (const [key, val0] of score[j]) {
+          const k = Math.floor(key / V)
+          const r = Math.log(d / size / ((on[j].t - on[k].t) / sizes[key % V]))
+          const val = val0 + own - RATIO * r * r
+          if (val > best) {
+            best = val
+            link = [key]
+          }
+        }
+        const prior = j > 0 ? bestUpTo[j] : undefined
+        if (prior && prior.i >= 0 && prior.v + own - RESTART > best) {
+          best = prior.v + own - RESTART
+          link = [-1, prior.i, prior.key]
+        }
+        if (best > -Infinity) {
+          score[i].set(j * V + v, best)
+          back[i].set(j * V + v, link)
         }
       }
-      const prior = j > 0 ? bestUpTo[j] : undefined
-      if (prior && prior.v + own - RESTART > best) {
-        best = prior.v + own - RESTART
-        link = [-1, prior.i, prior.j]
-      }
-      if (best > -Infinity) {
-        score[i].set(j, best)
-        back[i].set(j, link)
-      }
     }
-    const here = { v: -Infinity, i: -1, j: -1 }
-    for (const [j, v] of score[i]) if (v > here.v) Object.assign(here, { v, i, j })
+    const here = { v: -Infinity, i: -1, key: -1 }
+    for (const [key, v] of score[i]) if (v > here.v) Object.assign(here, { v, i, key })
     const before = i > 0 ? bestUpTo[i - 1] : undefined
     bestUpTo.push(before && before.v > here.v ? before : here)
   }
@@ -229,53 +255,61 @@ export function trackBars(notes: NoteEvent[], period: number, meter: Meter): { d
   // itself earns its own bass bonus).
   const lastT = on[n - 1].t
   let bi = -1
-  let bj = -1
+  let bkey = -1
   let top = -Infinity
   for (let i = 0; i < n; i++) {
-    for (const [j, v] of score[i]) {
+    for (const [key, v] of score[i]) {
       const val = v + on[i].down - (lastT - on[i].t > period * 1.2 ? RESTART : 0)
       if (val > top) {
         top = val
         bi = i
-        bj = j
+        bkey = key
       }
     }
   }
-  if (bi < 0) return { downs: [], score: -Infinity }
+  if (bi < 0) return { downs: [], beats: [], score: -Infinity }
   const downs: number[] = [on[bi].t]
+  const beats: number[] = []
   let i = bi
-  let j = bj
+  let key = bkey
   for (;;) {
+    const j = Math.floor(key / V)
     downs.push(on[j].t)
-    const link = back[i].get(j) ?? []
+    beats.push(sizes[key % V])
+    const link = back[i].get(key) ?? []
     if (link.length === 0) break
     if (link[0] === -1) {
-      if (link[1] !== j) downs.push(on[link[1]].t)
+      if (link[1] !== j) {
+        downs.push(on[link[1]].t)
+        beats.push(L)
+      }
       i = link[1]
-      j = link[2]
+      key = link[2]
     } else {
       i = j
-      j = link[0]
+      key = link[0]
     }
   }
-  return { downs: downs.reverse(), score: top }
+  return { downs: downs.reverse(), beats: beats.reverse(), score: top }
 }
 
 /**
  * Beat times from downbeats: each bar's beats are spread evenly inside it, then each beat is
  * nudged onto a note played right at it, so a beat that is lingered on or hurried stays in place.
  * Bars are added before the first and after the last downbeat to cover every note.
+ * `beats` is the meter's beats in a bar, `sizes` the beats of each tracked bar where it differs.
  */
-export function beatsFromBars(downs: number[], beats: number, notes: NoteEvent[]): { timing: Timing; pickup: number } {
+export function beatsFromBars(downs: number[], beats: number, notes: NoteEvent[], sizes: number[] = []): { timing: Timing; pickup: number; barBeats: number[] } {
   const starts = [...new Set(notes.map((n) => n.start))].sort((a, b) => a - b)
   const out: number[] = []
   for (let k = 0; k + 1 < downs.length; k++) {
     const a = downs[k]
     const span = downs[k + 1] - a
-    for (let q = 0; q < beats; q++) {
-      let t = a + (span * q) / beats
+    const count = sizes[k] ?? beats
+    for (let q = 0; q < count; q++) {
+      let t = a + (span * q) / count
       if (q > 0) {
-        const tol = (span / beats) * NUDGE
+        const tol = (span / count) * NUDGE
         let best = Infinity
         for (const s of starts) if (Math.abs(s - t) < Math.abs(best - t)) best = s
         if (Math.abs(best - t) <= tol) t = best
@@ -284,7 +318,7 @@ export function beatsFromBars(downs: number[], beats: number, notes: NoteEvent[]
     }
   }
   const lastBar = downs.length >= 2 ? downs[downs.length - 1] - downs[downs.length - 2] : 2
-  const beat = lastBar / beats
+  const beat = lastBar / (sizes[downs.length - 2] ?? beats)
   out.push(downs[downs.length - 1])
   const lastNote = starts[starts.length - 1] ?? 0
   while (out[out.length - 1] < lastNote + beat) out.push(out[out.length - 1] + beat)
@@ -295,23 +329,25 @@ export function beatsFromBars(downs: number[], beats: number, notes: NoteEvent[]
     out.unshift(out[0] - firstBeat)
     pickup++
   }
-  return { timing: { beatTimes: out }, pickup }
+  const barBeats = [...new Array<number>(Math.ceil(pickup / beats)).fill(beats), ...downs.slice(1).map((_, k) => sizes[k] ?? beats)]
+  return { timing: { beatTimes: out }, pickup, barBeats }
 }
 
 /**
  * Place the barlines of a performance: follow its bars with trackBars, at the length the tracked
  * pulse and the meter suggest, and spread each bar's beats inside it. Returns the pulse to
- * quantize with and the number of pickup beats before the first downbeat.
+ * quantize with, the number of pickup beats before the first downbeat, and the beats in each
+ * measure from measure 1 (a few may be shorter than the meter's).
  */
-export function fitBars(notes: NoteEvent[], heard: Timing, timeSig: [number, number]): { timing: Timing; pickup: number } {
+export function fitBars(notes: NoteEvent[], heard: Timing, timeSig: [number, number]): { timing: Timing; pickup: number; barBeats?: number[] } {
   const compound = timeSig[1] === 8 && timeSig[0] % 3 === 0 && timeSig[0] > 3
   const beats = compound ? timeSig[0] / 3 : timeSig[0]
   const b = heard.beatTimes
   if (notes.length < 8 || b.length < 2) return { timing: heard, pickup: 0 }
   const period = beats * medianGap(b)
-  const { downs } = trackBars(notes, period, { beats, split: compound ? 3 : 2 })
+  const { downs, beats: sizes } = trackBars(notes, period, { beats, split: compound ? 3 : 2 }, oddBars(beats))
   if (downs.length < 2) return { timing: heard, pickup: 0 }
-  return beatsFromBars(downs, beats, notes)
+  return beatsFromBars(downs, beats, notes, sizes)
 }
 
 function medianGap(times: number[]): number {

@@ -3,6 +3,7 @@ import { fitBars, trackBars } from './bars'
 import { hearSwing, quantize } from './quantize'
 import { trackBeats } from './tempo'
 import type { NoteEvent } from './types'
+import { measureTicks, voiceTicks } from '../model/score'
 
 const CHORDS = [
   [45, 57, 60, 64],
@@ -55,6 +56,30 @@ describe('bar tracking', () => {
     const { score } = quantize(notes, { timing: fit.timing, timeSig: [3, 4], pickupBeats: fit.pickup, twoVoices: true, grid: 16 })
     expect(score.measures.length).toBe(17)
     for (const m of score.measures.slice(1)) expect(m.voices[1][0].notes.length).toBe(1)
+  })
+})
+
+describe('bars of another length', () => {
+  it('writes a two-beat bar inside 4/4 as a 2/4 measure', () => {
+    const notes: NoteEvent[] = []
+    const lengths = [4, 4, 4, 4, 4, 2, 4, 4, 4, 4, 4, 2, 4, 4, 4, 4]
+    const beat = 0.6
+    let t = 0.5
+    lengths.forEach((len, bar) => {
+      const c = CHORDS[bar % CHORDS.length]
+      notes.push({ start: t, duration: beat * len, pitch: c[0], amplitude: 0.9 })
+      for (let q = 0; q < len; q++) {
+        for (const p of q === 0 ? c.slice(1) : c.slice(2)) notes.push({ start: t + q * beat, duration: beat, pitch: p, amplitude: 0.45 })
+        notes.push({ start: t + (q + 0.5) * beat, duration: beat / 2, pitch: c[1], amplitude: 0.35 })
+      }
+      t += beat * len
+    })
+    const fit = fitBars(notes, trackBeats(notes), [4, 4])
+    // The last measure, after the final downbeat, is a regular one and not listed.
+    expect(fit.barBeats).toEqual(lengths.slice(0, -1))
+    const { score } = quantize(notes, { timing: fit.timing, timeSig: [4, 4], pickupBeats: fit.pickup, twoVoices: true, grid: 16, barBeats: fit.barBeats })
+    expect(score.measures.map((m) => m.timeSig?.join('/') ?? '4/4')).toEqual(lengths.map((l) => (l === 2 ? '2/4' : '4/4')))
+    for (const [mi, m] of score.measures.entries()) for (const v of m.voices) expect(voiceTicks(v)).toBe(measureTicks(score, mi))
   })
 })
 
