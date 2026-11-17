@@ -7,7 +7,8 @@ import { TranscribePanel, type TranscribeSettings } from './components/Transcrib
 import { type SavedScore, type User, deleteScore, explain, listScores, loadScore, renameScore, saveScore, signOutUser, watchUser } from './firebase'
 import { demoScore } from './model/demo'
 import * as ed from './model/edit'
-import { type Dur, type Score, newScore, notePitch } from './model/score'
+import type { Key } from './model/keys'
+import { type Dur, type Score, newScore, notePitch, scoreKey } from './model/score'
 import type { RenderOptions } from './model/toAlphaTab'
 import { MODEL_RATE, decodeToMono, monoToWav } from './transcribe/audio'
 import { detectNotes } from './transcribe/detect'
@@ -26,11 +27,11 @@ interface Recording {
   url: string
   events: NoteEvent[]
   timing: Timing
-  key: number
+  key: Key
 }
 
 const NONE: number[] = []
-const DEFAULT_SETTINGS: TranscribeSettings = { timeSig: [4, 4], pickup: -1, grid: 16, twoVoices: true, pulse: 1 }
+const DEFAULT_SETTINGS: TranscribeSettings = { timeSig: [4, 4], pickup: -1, grid: 16, twoVoices: true, pulse: 1, key: null }
 
 export default function App() {
   const view = useRef<ScoreViewHandle>(null)
@@ -134,7 +135,7 @@ export default function App() {
         twoVoices: s.twoVoices,
         swing: hearSwing(rec.events, timing),
         grid: s.grid,
-        key: rec.key,
+        key: s.key ?? rec.key,
         title: title ?? scoreRef.current.title,
         composer: scoreRef.current.composer,
       })
@@ -178,7 +179,7 @@ export default function App() {
   const detected = useMemo(() => {
     if (!recording) return null
     const timing = settings.pulse === 1 ? recording.timing : rescaleTiming(recording.timing, settings.pulse)
-    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: fitBars(recording.events, timing, settings.timeSig).pickup }
+    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: fitBars(recording.events, timing, settings.timeSig).pickup, key: recording.key }
   }, [recording, settings.pulse, settings.timeSig])
 
   // ---- verification -------------------------------------------------------------------------
@@ -549,7 +550,7 @@ export default function App() {
           {tab === 'check' && (
             <CheckPanel
               result={result}
-              keySig={score.key}
+              keySig={scoreKey(score)}
               canCheck={!!recording && !!sync}
               busy={busy}
               progress={progress}

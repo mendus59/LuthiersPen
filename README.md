@@ -7,7 +7,7 @@
 Turn a solo guitar recording into classical guitar sheet music you can play back, check against the original and edit, all in the browser.
 
 - Transcribe an audio or MP4 video file (all of it or a chosen part), a YouTube video played in the page, or your microphone into classical guitar notation.
-- Scores are engraved like a published edition: notation over tablature, two voices, fingerings, string numbers, barre brackets and chord names.
+- Scores are engraved like a published edition: the key found by ear and its signature, notation over tablature, two voices, fingerings, string numbers, barres and chord names.
 - Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
 - Check the transcription: every written note is looked up in the recording, and doubtful notes and measures are marked in the score.
 - Edit any note, rhythm or fingering, or write a new score from scratch, with undo and keyboard shortcuts.
