@@ -1,9 +1,10 @@
+import type { Key } from '../model/keys'
 import { pitchName } from '../model/score'
 import { DOUBT, GOOD, type VerifyResult } from '../verify/verify'
 
 interface Props {
   result: VerifyResult | null
-  keySig: number
+  keySig: Key
   canCheck: boolean
   busy: string | null
   progress: number

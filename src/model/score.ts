@@ -1,6 +1,8 @@
 // LuthiersPen's own score model. It is deliberately small and JSON-friendly so it can be
 // saved to Firestore, edited, and converted to an alphaTab score for engraving and playback.
 
+import { type Key, pcName, spell } from './keys'
+
 export type Dur = 1 | 2 | 4 | 8 | 16 | 32
 export type RhFinger = 'p' | 'i' | 'm' | 'a'
 
@@ -45,6 +47,8 @@ export interface Score {
   timeSig: [number, number]
   /** Key signature: number of sharps (positive) or flats (negative). */
   key: number
+  /** The key is the minor one of its signature (A minor rather than C major). */
+  keyMinor?: boolean
   /** Open-string MIDI pitches for strings 1..6. */
   tuning: number[]
   measures: Measure[]
@@ -91,13 +95,15 @@ export function notePitch(score: Pick<Score, 'tuning'>, n: Pick<Note, 'string' |
   return score.tuning[n.string - 1] + n.fret
 }
 
-const NAMES_SHARP = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
-const NAMES_FLAT = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B']
+/** The key a score is in. */
+export function scoreKey(score: Pick<Score, 'key' | 'keyMinor'>): Key {
+  return { sharps: score.key, minor: !!score.keyMinor }
+}
 
-/** Written pitch name (guitar music is written an octave above where it sounds). */
-export function pitchName(midi: number, key = 0): string {
-  const names = key < 0 ? NAMES_FLAT : NAMES_SHARP
-  return `${names[((midi % 12) + 12) % 12]}${Math.floor(midi / 12)}`
+/** Pitch name as written in a key, with its octave (C4 = middle C; B♯3 is written below C4). */
+export function pitchName(midi: number, key: Key = { sharps: 0, minor: false }): string {
+  const s = spell(((midi % 12) + 12) % 12, key)
+  return `${pcName(midi, key)}${Math.floor((midi - s.offset) / 12) - 1}`
 }
 
 /** A rest filling a whole measure, split into legal note values. */

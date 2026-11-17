@@ -1,4 +1,5 @@
 import { type Beat, type Dur, MAX_FRET, type Measure, type Note, type Score, STANDARD_TUNING } from '../model/score'
+import { type Key, keyFromHistogram } from '../model/keys'
 import { assignFingerboard, type GridNote, type GroupMark } from './fingering'
 import { beatsToTime, type Timing, timeToBeats, timingTempo } from './tempo'
 import type { NoteEvent } from './types'
@@ -19,7 +20,7 @@ export interface QuantizeOptions {
   barBeats?: number[]
   /** Smallest note value. */
   grid: 8 | 16
-  key?: number
+  key?: Key
   title?: string
   composer?: string
   tuning?: number[]
@@ -344,43 +345,21 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
     ...(opts.swing ? { tempoText: 'Swing' } : {}),
     tempo,
     timeSig: opts.timeSig,
-    key: opts.key ?? 0,
+    key: opts.key?.sharps ?? 0,
+    ...(opts.key?.minor ? { keyMinor: true } : {}),
     tuning: [...tuning],
     measures,
   }
   return { score, timing: { beatTimes } }
 }
 
-/** Guess the key signature (sharps/flats) from pitch-class weights (Krumhansl profiles). */
-export function guessKey(events: NoteEvent[]): number {
-  const major = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
-  const minor = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+/**
+ * Find the key of a performance from how long each pitch class sounds (Krumhansl-Schmuckler).
+ * Short notes count by their length, long ones are capped so a ringing bass does not drown the
+ * melody, and louder notes count more.
+ */
+export function guessKey(events: NoteEvent[]): Key {
   const hist = new Array<number>(12).fill(0)
   for (const e of events) hist[((Math.round(e.pitch) % 12) + 12) % 12] += Math.min(e.duration, 0.4) * e.amplitude
-  const mean = (xs: number[]) => xs.reduce((x, y) => x + y, 0) / xs.length
-  const hm = mean(hist)
-  const corr = (profile: number[], tonic: number) => {
-    const pm = mean(profile)
-    let num = 0
-    let dp = 0
-    let dh = 0
-    for (let i = 0; i < 12; i++) {
-      const h = hist[(i + tonic) % 12] - hm
-      const q = profile[i] - pm
-      num += h * q
-      dp += q * q
-      dh += h * h
-    }
-    return num / (Math.sqrt(dp * dh) || 1)
-  }
-  let best = { v: -Infinity, sharps: 0 }
-  // Number of sharps for each major tonic pitch class.
-  const sharpsOfMajor = [0, -5, 2, -3, 4, -1, 6, 1, -4, 3, -2, 5]
-  for (let t = 0; t < 12; t++) {
-    const mj = corr(major, t)
-    if (mj > best.v) best = { v: mj, sharps: sharpsOfMajor[t] }
-    const mn = corr(minor, t)
-    if (mn > best.v) best = { v: mn, sharps: sharpsOfMajor[(t + 3) % 12] }
-  }
-  return best.sharps
+  return keyFromHistogram(hist)
 }

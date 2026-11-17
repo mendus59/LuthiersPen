@@ -1,7 +1,5 @@
-import { type Measure, type Score, beatTicks, notePitch } from './score'
-
-const SHARP = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B']
-const FLAT = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B']
+import { pcName } from './keys'
+import { type Measure, type Score, beatTicks, notePitch, scoreKey } from './score'
 
 const KINDS: Array<[string, number[]]> = [
   ['', [0, 4, 7]],
@@ -32,7 +30,8 @@ export function chordName(score: Score, measure: Measure): string {
     }
   }
   if (total === 0) return ''
-  const names = score.key < 0 ? FLAT : SHARP
+  const key = scoreKey(score)
+  const names = (pc: number) => pcName(pc, key)
   const bassPc = bass % 12
   let best = { fit: -Infinity, root: 0, kind: '' }
   for (let root = 0; root < 12; root++) {
@@ -47,6 +46,6 @@ export function chordName(score: Score, measure: Measure): string {
     }
   }
   if (best.fit < 0.6 * total) return ''
-  const name = names[best.root] + best.kind
-  return bassPc === best.root ? name : `${name}/${names[bassPc]}`
+  const name = names(best.root) + best.kind
+  return bassPc === best.root ? name : `${name}/${names(bassPc)}`
 }

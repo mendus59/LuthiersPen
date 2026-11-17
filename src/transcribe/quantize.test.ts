@@ -55,8 +55,8 @@ describe('transcription pipeline', () => {
     expect([...pitches].sort((a, b) => a - b)).toEqual([40, 45, 50, 59, 60, 62, 64, 65, 68, 69, 72])
   })
 
-  it('guesses A minor / C major as no sharps', () => {
-    expect(guessKey(study(90, 4))).toBe(0)
+  it('hears the arpeggio study in A minor', () => {
+    expect(guessKey(study(90, 4))).toEqual({ sharps: 0, minor: true })
   })
 })
 
@@ -89,7 +89,7 @@ it('keeps the barlines on the bass when the pulse gains a beat', () => {
   const { events, timing } = barsOf([1, 4, 4, 4, 5, 4, 4, 4, 4], 0.5)
   const fit = fitBars(events, timing, [4, 4])
   expect(fit.pickup).toBe(1)
-  const { score } = quantize(events, { timing: fit.timing, timeSig: [4, 4], pickupBeats: fit.pickup, twoVoices: false, grid: 16, key: 0, title: '', composer: '' })
+  const { score } = quantize(events, { timing: fit.timing, timeSig: [4, 4], pickupBeats: fit.pickup, twoVoices: false, grid: 16, key: { sharps: 0, minor: false }, title: '', composer: '' })
   // Every full measure starts with the bass note.
   const firsts = score.measures.slice(1).map((m) => m.voices[0][0].notes.map((n) => notePitch(score, n)))
   expect(firsts.every((p) => p.includes(45))).toBe(true)
@@ -105,7 +105,7 @@ it('gives the bass voice only the note that carries the harmony', () => {
       events.push({ start, duration: 0.2, pitch, amplitude: 0.7 })
       if (i % 2 === 0) beatTimes.push(start)
     })
-  const { score } = quantize(events, { timing: { beatTimes }, timeSig: [3, 8], pickupBeats: 0, twoVoices: true, grid: 16, key: 0, title: '', composer: '' })
+  const { score } = quantize(events, { timing: { beatTimes }, timeSig: [3, 8], pickupBeats: 0, twoVoices: true, grid: 16, key: { sharps: 0, minor: false }, title: '', composer: '' })
   expect(score.measures.length).toBe(3)
   for (const m of score.measures) {
     // Bass: one dotted quarter. Upper voice: a sixteenth rest, then the five notes above the bass.

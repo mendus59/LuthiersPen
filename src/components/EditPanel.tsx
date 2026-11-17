@@ -1,5 +1,6 @@
 import * as ed from '../model/edit'
-import { type Dur, type RhFinger, type Score, notePitch, pitchName } from '../model/score'
+import { ALL_KEYS, keyName, keyValue, parseKey, signatureName } from '../model/keys'
+import { type Dur, type RhFinger, type Score, notePitch, pitchName, scoreKey } from '../model/score'
 
 const SIGS = ['4/4', '3/4', '2/4', '6/8', '3/8', '9/8', '12/8', '2/2']
 
@@ -55,10 +56,16 @@ export function EditPanel({ score, selection: sel, apply, setScore, select, undo
           <input type="number" min={20} max={240} value={score.tempo} onChange={(e) => setScore({ ...score, tempo: Math.max(20, Math.min(240, Number(e.target.value) || 60)) })} />
         </label>
         <label>
-          Key signature
-          <select value={score.key} onChange={(e) => setScore({ ...score, key: Number(e.target.value) })}>
-            {[-7, -6, -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
-              <option key={k} value={k}>{k === 0 ? 'No sharps or flats' : k > 0 ? `${k} sharp${k > 1 ? 's' : ''}` : `${-k} flat${k < -1 ? 's' : ''}`}</option>
+          Key
+          <select
+            value={keyValue(scoreKey(score))}
+            onChange={(e) => {
+              const k = parseKey(e.target.value)
+              setScore({ ...score, key: k.sharps, keyMinor: k.minor })
+            }}
+          >
+            {ALL_KEYS.map((k) => (
+              <option key={keyValue(k)} value={keyValue(k)}>{`${keyName(k)} (${signatureName(k.sharps)})`}</option>
             ))}
           </select>
         </label>
@@ -89,7 +96,7 @@ export function EditPanel({ score, selection: sel, apply, setScore, select, undo
         <>
           <h3>
             Measure {sel.m + 1}, {sel.v === 0 ? 'upper voice' : 'bass voice'}
-            {note ? ` · ${pitchName(notePitch(score, note) + 12, score.key)}` : beat.notes.length === 0 ? ' · rest' : ''}
+            {note ? ` · ${pitchName(notePitch(score, note) + 12, scoreKey(score))}` : beat.notes.length === 0 ? ' · rest' : ''}
           </h3>
           {balance !== 0 && (
             <p className="warn">

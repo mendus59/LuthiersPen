@@ -1,6 +1,7 @@
 import * as alphaTab from '@coderline/alphatab'
 import { chordName } from './chords'
-import { type Score, measureTicks, restsFor, voiceTicks } from './score'
+import { spell } from './keys'
+import { type Score, measureTicks, notePitch, restsFor, scoreKey, voiceTicks } from './score'
 
 const m = alphaTab.model
 
@@ -23,6 +24,15 @@ const RH: Record<string, alphaTab.model.Fingers> = {
 const LH = [m.Fingers.NoOrDead, m.Fingers.IndexFinger, m.Fingers.MiddleFinger, m.Fingers.AnnularFinger, m.Fingers.LittleFinger]
 
 const DOUBT = alphaTab.model.Color.fromJson('#c2410c')
+
+/** The accidental that writes a note on the letter its key asks for. */
+const SPELLED: Record<number, alphaTab.model.NoteAccidentalMode> = {
+  [-2]: m.NoteAccidentalMode.ForceDoubleFlat,
+  [-1]: m.NoteAccidentalMode.ForceFlat,
+  0: m.NoteAccidentalMode.ForceNatural,
+  1: m.NoteAccidentalMode.ForceSharp,
+  2: m.NoteAccidentalMode.ForceDoubleSharp,
+}
 
 /** Build an alphaTab score (engraving + playback model) from a LuthiersPen score. */
 export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab.Settings): alphaTab.model.Score {
@@ -52,6 +62,7 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
   at.addTrack(track)
 
   const strings = score.tuning.length
+  const key = scoreKey(score)
   const twoVoices = score.measures.some((x) => x.voices.length > 1)
 
   // Right-hand fingering the way an edition prints it: the whole figure at the start, then only
@@ -87,6 +98,7 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
     const bar = new m.Bar()
     bar.clef = m.Clef.G2
     bar.keySignature = score.key as alphaTab.model.KeySignature
+    bar.keySignatureType = key.minor ? m.KeySignatureType.Minor : m.KeySignatureType.Major
     staff.addBar(bar)
 
     let chordId: string | null = null
@@ -139,6 +151,8 @@ export function toAlphaTab(score: Score, opts: RenderOptions, settings: alphaTab
           const note = new m.Note()
           note.fret = n.fret
           note.string = strings - n.string + 1
+          // Spell from the key (G♯ in A minor, C♯ in D minor) rather than from the signature alone.
+          note.accidentalMode = SPELLED[spell(notePitch(score, n) % 12, key).offset]
           if (n.tie) note.isTieDestination = true
           if (opts.showLh && n.lh) note.leftHandFinger = LH[n.lh] ?? m.Fingers.Unknown
           else if (opts.showLh && vi === 0 && openZero.has(`${mi}:${bi}:${n.string}`)) note.leftHandFinger = m.Fingers.NoOrDead

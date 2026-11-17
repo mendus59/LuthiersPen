@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { ALL_KEYS, type Key, keyName, keyValue, parseKey, signatureName } from '../model/keys'
 import { type Capture, captureMicrophone, captureTab, youtubeId } from '../transcribe/capture'
 
 export interface TranscribeSettings {
@@ -9,6 +10,8 @@ export interface TranscribeSettings {
   twoVoices: boolean
   /** 1 = as tracked, 0.5 = half as many beats, 2 = twice as many. */
   pulse: 0.5 | 1 | 2
+  /** null = the key heard in the recording. */
+  key: Key | null
 }
 
 interface Props {
@@ -16,7 +19,7 @@ interface Props {
   progress: number
   hasCapture: boolean
   settings: TranscribeSettings
-  detected: { tempo: number; notes: number; pickup: number } | null
+  detected: { tempo: number; notes: number; pickup: number; key: Key } | null
   /** `range` limits the transcription to part of the recording, in seconds. */
   onAudio(data: ArrayBuffer, name: string, range?: { from: number; to: number }): void
   onSettings(s: TranscribeSettings): void
@@ -196,9 +199,16 @@ export function TranscribePanel(p: Props) {
         <>
           <h3>Reading of the recording</h3>
           <p className="hint">
-            Found {p.detected.notes} notes at about {p.detected.tempo} beats per minute. Adjust these if the notation does not sit right; the score is redrawn each time.
+            Found {p.detected.notes} notes in {keyName(p.detected.key)} at about {p.detected.tempo} beats per minute. Adjust these if the notation does not sit right; the score is redrawn each time.
           </p>
           <div className="grid2">
+            <label className="wide">
+              Key
+              <select value={s.key ? keyValue(s.key) : ''} disabled={locked} onChange={(e) => set({ key: e.target.value ? parseKey(e.target.value) : null })}>
+                <option value="">{`As heard: ${keyName(p.detected.key)} (${signatureName(p.detected.key.sharps)})`}</option>
+                {ALL_KEYS.map((k) => <option key={keyValue(k)} value={keyValue(k)}>{`${keyName(k)} (${signatureName(k.sharps)})`}</option>)}
+              </select>
+            </label>
             <label>
               Time signature
               <select value={s.timeSig.join('/')} disabled={locked} onChange={(e) => set({ timeSig: e.target.value.split('/').map(Number) as [number, number] })}>
