@@ -4,7 +4,7 @@ import { EditPanel, nearestPitch } from './components/EditPanel'
 import { LibraryPanel } from './components/LibraryPanel'
 import { type PlayerPosition, ScoreView, type ScoreViewHandle } from './components/ScoreView'
 import { TranscribePanel, type TranscribeSettings } from './components/TranscribePanel'
-import { type SavedScore, type User, deleteScore, explain, listScores, loadScore, saveScore, signOutUser, watchUser } from './firebase'
+import { type SavedScore, type User, deleteScore, explain, listScores, loadScore, renameScore, saveScore, signOutUser, watchUser } from './firebase'
 import { demoScore } from './model/demo'
 import * as ed from './model/edit'
 import { type Dur, type Score, newScore, notePitch } from './model/score'
@@ -281,6 +281,30 @@ export default function App() {
       setNotice({ kind: 'error', text: `Could not open: ${explain(err)}` })
     }
   }
+  /** Rename a saved piece from the library. The open copy follows if it is the same piece. */
+  const rename = async (id: string, title: string) => {
+    if (!user) return
+    await renameScore(user.uid, id, title)
+    if (id === docId) setScoreState((s) => ({ ...s, title }))
+    setLibrary((list) => list?.map((x) => (x.id === id ? { ...x, title } : x)) ?? list)
+  }
+  /** Whether the score had unsaved changes when the title box was focused. */
+  const titleFocus = useRef<{ dirty: boolean; title: string } | null>(null)
+  /** Typing a new title for a saved piece keeps it in the library as soon as you leave the box. */
+  const commitTitle = async () => {
+    const before = titleFocus.current
+    titleFocus.current = null
+    const title = score.title.trim()
+    if (!user || !docId || !before || !title || title === before.title) return
+    try {
+      await renameScore(user.uid, docId, title)
+      setLibrary((list) => list?.map((x) => (x.id === docId ? { ...x, title } : x)) ?? list)
+      // Only the title changed since the last save, so the piece is saved again.
+      if (!before.dirty) setDirty(false)
+    } catch (err) {
+      setNotice({ kind: 'error', text: `Could not rename: ${explain(err)}` })
+    }
+  }
   const remove = async (id: string) => {
     if (!user) return
     try {
@@ -390,7 +414,16 @@ export default function App() {
           </span>
         </div>
         <div className="titles">
-          <input className="title" aria-label="Title" value={score.title} placeholder="Title" onChange={(e) => setScore({ ...score, title: e.target.value })} />
+          <input
+            className="title"
+            aria-label="Title"
+            value={score.title}
+            placeholder="Title"
+            onFocus={() => { titleFocus.current = { dirty, title: score.title } }}
+            onChange={(e) => setScore({ ...score, title: e.target.value })}
+            onBlur={() => void commitTitle()}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur() }}
+          />
           <input className="composer" aria-label="Composer" value={score.composer} placeholder="Composer" onChange={(e) => setScore({ ...score, composer: e.target.value })} />
         </div>
         <div className="actions">
@@ -533,6 +566,7 @@ export default function App() {
               error={libraryError}
               onOpen={(id) => void open(id)}
               onDelete={(id) => void remove(id)}
+              onRename={rename}
               onRefresh={() => void refreshLibrary(user)}
             />
           )}
