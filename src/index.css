@@ -133,6 +133,8 @@ aside nav button.on { background: none; color: var(--accent); border-bottom-colo
 .library .open { flex: 1; border: none; background: none; text-align: left; display: flex; flex-direction: column; padding: 8px 10px; min-width: 0; }
 .library .open strong { font-family: 'Iowan Old Style', Georgia, serif; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .library .open span { color: var(--muted); font-size: 12px; }
+.library .rename { flex: 1; display: flex; align-items: center; gap: 6px; padding: 6px; min-width: 0; }
+.library .rename input { flex: 1; min-width: 0; font-family: 'Iowan Old Style', Georgia, serif; font-size: 15px; }
 
 @media (max-width: 900px) {
   main { flex-direction: column; overflow: auto; }

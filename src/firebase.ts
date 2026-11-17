@@ -4,7 +4,7 @@ import {
   signInWithEmailAndPassword, signInWithPopup, signOut,
 } from 'firebase/auth'
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, orderBy, query, serverTimestamp, setDoc,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, getFirestore, orderBy, query, serverTimestamp, setDoc, updateDoc,
 } from 'firebase/firestore'
 import type { Score } from './model/score'
 import type { Timing } from './transcribe/tempo'
@@ -78,6 +78,23 @@ export async function loadScore(uid: string, id: string): Promise<ScoreDocument 
   const snap = await getDoc(doc(scoresOf(uid), id))
   if (!snap.exists()) return null
   return JSON.parse(snap.data().data as string) as ScoreDocument
+}
+
+/** Put a new title into a saved document's JSON text, leaving the rest as it was. */
+export function retitleData(json: string, title: string): string {
+  const data = JSON.parse(json) as ScoreDocument
+  return JSON.stringify({ ...data, score: { ...data.score, title } })
+}
+
+/**
+ * Rename a saved score without touching anything else in it. The library list shows the
+ * `title` field and opening a score reads the JSON, so both are changed together.
+ */
+export async function renameScore(uid: string, id: string, title: string): Promise<void> {
+  const ref = doc(scoresOf(uid), id)
+  const snap = await getDoc(ref)
+  if (!snap.exists()) throw new Error('That score no longer exists.')
+  await updateDoc(ref, { title, data: retitleData(snap.data().data as string, title) })
 }
 
 export const deleteScore = (uid: string, id: string) => deleteDoc(doc(scoresOf(uid), id))
