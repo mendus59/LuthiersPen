@@ -9,7 +9,7 @@ Turn a solo guitar recording into classical guitar sheet music you can play back
 - Transcribe an audio or MP4 video file (all of it or a chosen part), a YouTube video played in the page, or your microphone into classical guitar notation.
 - Scores are engraved like a published edition: the key found by ear and its signature, notation over tablature, two voices, fingerings, string numbers, barres and chord names.
 - Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
-- Check the transcription: every written note is looked up in the recording, and doubtful notes and measures are marked in the score.
+- Check every written note against the recording, and compare the arrangement with the composer's original score to find missing melody notes and stray ones.
 - Edit any note, rhythm or fingering, or write a new score from scratch, with undo and keyboard shortcuts.
 - Sign in with Google or email to save scores to your library, and export to PDF, MIDI or Guitar Pro.
 <!-- site-summary:end -->
@@ -29,6 +29,7 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 | Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
 | Engrave and play | [alphaTab](https://alphatab.net) draws the notation and plays it with a nylon-guitar soundfont. | `src/model/toAlphaTab.ts`, `src/components/ScoreView.tsx` |
 | Check | Each note the score will play is looked up in the recording at that moment (its partials must stand clear of the neighbouring semitones), and each note heard must be in the score. | `src/verify/` |
+| Compare | The original score is lined up with the arrangement by the pitch classes sounding in each sixteenth (dynamic time warping, any key, note values halved or doubled, rubato), then its melody and bass are looked for in the arrangement and every arranged note is looked for in the original. | `src/compare/` |
 
 ### Video files
 
@@ -37,6 +38,16 @@ An MP4 (or MOV/WebM) video can be chosen like an audio file; only its sound is r
 ### YouTube
 
 A static website cannot download the audio of a YouTube video. Instead the video plays inside the page and the browser records the tab's sound, with your permission: choose *this tab* and keep *Also share tab audio* on. This takes as long as the video and needs Chrome or Edge on a computer.
+
+### Comparing with the original
+
+Guitar arrangements of classical pieces are interpretations: they change key, thin the accompaniment and sometimes leave passages out. *Compare* reads the composer's original score (MusicXML, .mxl or Guitar Pro, for example a MuseScore or IMSLP export), finds the key, the note values and the passages the arrangement covers, and lists:
+
+- melody notes of the original that the arrangement doesn't play, each with an *Add* button that writes it into the score in the arrangement's key and octave;
+- notes of the arrangement that nothing in the original supports at that moment, which are often transcription errors or slips in the recording, each with a *Remove* button;
+- bass notes left out, kept apart because arrangements often thin the bass.
+
+On a transcription of a guitar recording of Für Elise against Beethoven's piano score, it finds the same key, 92% of the melody and 27 notes (3%) the original doesn't have. Repeats in the original are written out. If the original is a single line (a melody or lead sheet), only the melody is compared.
 
 ### Measured accuracy
 

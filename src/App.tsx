@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CheckPanel } from './components/CheckPanel'
+import { ComparePanel } from './components/ComparePanel'
+import { type Comparison, compareWithOriginal } from './compare/compare'
+import { type OriginalScore, readOriginal } from './compare/original'
 import { EditPanel, nearestPitch } from './components/EditPanel'
 import { LibraryPanel } from './components/LibraryPanel'
 import { type PlayerPosition, ScoreView, type ScoreViewHandle } from './components/ScoreView'
@@ -18,7 +21,7 @@ import { type Timing, beatsToTime, rescaleTiming, timingTempo, trackBeats } from
 import type { NoteEvent } from './transcribe/types'
 import { type VerifyResult, verify } from './verify/verify'
 
-type Tab = 'transcribe' | 'edit' | 'check' | 'library'
+type Tab = 'transcribe' | 'edit' | 'check' | 'compare' | 'library'
 type Source = 'score' | 'recording' | 'both'
 
 interface Recording {
@@ -61,6 +64,11 @@ export default function App() {
   const [result, setResult] = useState<VerifyResult | null>(null)
   const [checkedScore, setCheckedScore] = useState<Score | null>(null)
   const [notice, setNotice] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
+  const [original, setOriginal] = useState<{ name: string; score: OriginalScore } | null>(null)
+  const [comparison, setComparison] = useState<Comparison | null>(null)
+  const [comparedScore, setComparedScore] = useState<Score | null>(null)
+  const [comparing, setComparing] = useState(false)
+  const [compareError, setCompareError] = useState<string | null>(null)
 
   const [user, setUser] = useState<User | null>(null)
   const [library, setLibrary] = useState<SavedScore[] | null>(null)
@@ -181,6 +189,43 @@ export default function App() {
     const timing = settings.pulse === 1 ? recording.timing : rescaleTiming(recording.timing, settings.pulse)
     return { tempo: timingTempo(timing), notes: recording.events.length, pickup: fitBars(recording.events, timing, settings.timeSig).pickup, key: recording.key }
   }, [recording, settings.pulse, settings.timeSig])
+
+  // ---- comparison with the original score ---------------------------------------------------
+  const runCompare = useCallback((target: Score, orig: OriginalScore) => {
+    setComparing(true)
+    setCompareError(null)
+    // Let "Comparing…" paint before the (synchronous) alignment starts.
+    setTimeout(() => {
+      try {
+        const c = compareWithOriginal(target, orig)
+        if (!c) setCompareError('There are too few notes to compare. Transcribe or write the arrangement first.')
+        setComparison(c)
+        setComparedScore(target)
+      } catch (err) {
+        setCompareError((err as Error).message || 'The comparison failed.')
+      } finally {
+        setComparing(false)
+      }
+    }, 30)
+  }, [])
+  const openOriginal = useCallback(
+    (data: ArrayBuffer, name: string) => {
+      try {
+        const o = readOriginal(new Uint8Array(data))
+        if (o.notes.length === 0) throw new Error('That file has no notes to compare with.')
+        setOriginal({ name, score: o })
+        runCompare(scoreRef.current, o)
+      } catch (err) {
+        setCompareError((err as Error).message)
+      }
+    },
+    [runCompare],
+  )
+  const fixAndCompare = (edit: ed.Edit | null) => {
+    if (!edit) return
+    apply(edit)
+    if (original) runCompare(edit.score, original.score)
+  }
 
   // ---- verification -------------------------------------------------------------------------
   const check = useCallback(async () => {
@@ -398,8 +443,12 @@ export default function App() {
 
   const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
   const fresh = result && checkedScore === score ? result : null
-  const flagged = fresh ? fresh.flagged : NONE
-  const renderOptions = useMemo(() => ({ ...options, doubts: fresh ? new Set(fresh.doubts) : undefined }), [options, fresh])
+  const compared = tab === 'compare' && comparison && comparedScore === score ? comparison : null
+  const flagged = compared ? compared.flagged : fresh ? fresh.flagged : NONE
+  const renderOptions = useMemo(
+    () => ({ ...options, doubts: compared ? new Set(compared.strayKeys) : fresh ? new Set(fresh.doubts) : undefined }),
+    [options, fresh, compared],
+  )
 
   return (
     <div className="app">
@@ -505,7 +554,7 @@ export default function App() {
           flagged={flagged}
           onSelect={(sel) => {
             setSelection(sel)
-            if (sel && tab !== 'check') setTab('edit')
+            if (sel && tab !== 'check' && tab !== 'compare') setTab('edit')
           }}
           onPlaying={setPlaying}
           onPosition={setPosition}
@@ -513,9 +562,9 @@ export default function App() {
         />
         <aside>
           <nav role="tablist">
-            {(['transcribe', 'edit', 'check', 'library'] as Tab[]).map((k) => (
+            {(['transcribe', 'edit', 'check', 'compare', 'library'] as Tab[]).map((k) => (
               <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-                {k === 'transcribe' ? 'Transcribe' : k === 'edit' ? 'Edit' : k === 'check' ? 'Check' : 'Library'}
+                {k === 'transcribe' ? 'Transcribe' : k === 'edit' ? 'Edit' : k === 'check' ? 'Check' : k === 'compare' ? 'Compare' : 'Library'}
               </button>
             ))}
           </nav>
@@ -557,6 +606,24 @@ export default function App() {
               stale={!!result && checkedScore !== score}
               onCheck={() => void check()}
               onMeasure={(i) => view.current?.seekMeasure(i)}
+            />
+          )}
+          {tab === 'compare' && (
+            <ComparePanel
+              original={original}
+              result={comparison}
+              keySig={scoreKey(score)}
+              busy={comparing}
+              stale={!!comparison && comparedScore !== score}
+              error={compareError}
+              onFile={openOriginal}
+              onCompare={() => original && runCompare(score, original.score)}
+              onShow={(at) => {
+                setSelection({ m: at.measure, v: at.voice, b: at.beat, string: at.string })
+                view.current?.seekMeasure(at.measure)
+              }}
+              onAdd={(m) => fixAndCompare(ed.addPitch(score, { m: m.measure, v: m.voice, b: m.beat }, m.pitch))}
+              onRemove={(x) => fixAndCompare(ed.removeNote(score, { m: x.measure, v: x.voice, b: x.beat, string: x.string }))}
             />
           )}
           {tab === 'library' && (
