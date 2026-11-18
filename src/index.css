@@ -73,6 +73,8 @@ input[type='text'], input[type='url'], input[type='email'], input[type='password
 .notice { display: flex; justify-content: space-between; gap: 12px; padding: 7px 16px; font-family: system-ui, sans-serif; font-size: 13px; border-bottom: 1px solid var(--line); }
 .notice.ok { background: #e8f3ec; color: #1f5c39; }
 .notice.error { background: #fdece6; color: #8f2c0b; }
+.notice.import ul { margin: 4px 0 0; padding-left: 18px; }
+.notice.import .part select { font: inherit; width: auto; margin-left: 4px; padding: 1px 4px; }
 
 main { flex: 1; display: flex; min-height: 0; }
 .score-scroll { flex: 1; overflow: auto; padding: 24px; min-width: 0; }

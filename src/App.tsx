@@ -4,6 +4,7 @@ import { ComparePanel } from './components/ComparePanel'
 import { type Comparison, compareWithOriginal } from './compare/compare'
 import { type OriginalScore, readOriginal } from './compare/original'
 import { EditPanel, nearestPitch } from './components/EditPanel'
+import { type ImportResult, importScore } from './import/importScore'
 import { LibraryPanel } from './components/LibraryPanel'
 import { type PlayerPosition, ScoreView, type ScoreViewHandle } from './components/ScoreView'
 import { TranscribePanel, type TranscribeSettings } from './components/TranscribePanel'
@@ -69,6 +70,9 @@ export default function App() {
   const [comparedScore, setComparedScore] = useState<Score | null>(null)
   const [comparing, setComparing] = useState(false)
   const [compareError, setCompareError] = useState<string | null>(null)
+  /** The sheet-music file the open score was imported from, so another of its parts can be chosen. */
+  const [imported, setImported] = useState<{ name: string; bytes: Uint8Array; result: ImportResult } | null>(null)
+  const importInput = useRef<HTMLInputElement>(null)
 
   const [user, setUser] = useState<User | null>(null)
   const [library, setLibrary] = useState<SavedScore[] | null>(null)
@@ -119,6 +123,7 @@ export default function App() {
     setResult(null)
     setCheckedScore(null)
     setDirty(false)
+    setImported(null)
     if (!opts.keepRecording) {
       setRecording((r) => {
         if (r) URL.revokeObjectURL(r.url)
@@ -127,6 +132,26 @@ export default function App() {
       setSource('score')
     }
   }, [])
+
+  // ---- import from MusicXML / Guitar Pro ---------------------------------------------------------
+  /** Open a sheet-music file as a new, unsaved piece (or another part of the file already imported). */
+  const importFile = useCallback(
+    (bytes: Uint8Array, name: string, part?: number) => {
+      try {
+        const result = importScore(bytes, name, part)
+        openScore(result.score)
+        // A new piece that is not in the library yet: Save keeps it.
+        setDirty(true)
+        setImported({ name, bytes, result })
+        setSelection({ m: 0, v: 0, b: 0 })
+        setTab('edit')
+        setNotice(null)
+      } catch (err) {
+        setNotice({ kind: 'error', text: (err as Error).message || 'That file could not be imported.' })
+      }
+    },
+    [openScore],
+  )
 
   // ---- transcription ------------------------------------------------------------------------
   const requantize = useCallback(
@@ -487,6 +512,20 @@ export default function App() {
           >
             New score
           </button>
+          <button onClick={() => confirmDiscard() && importInput.current?.click()} title="Open MusicXML (.musicxml, .xml, .mxl) or Guitar Pro as a new piece you can edit and save">
+            Import
+          </button>
+          <input
+            ref={importInput}
+            type="file"
+            accept=".musicxml,.xml,.mxl,.gp,.gp3,.gp4,.gp5,.gpx,.gp7,.capx"
+            hidden
+            onChange={async (e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              if (f) importFile(new Uint8Array(await f.arrayBuffer()), f.name)
+            }}
+          />
           <button className="primary" onClick={() => void save()}>{dirty ? 'Save' : 'Saved'}</button>
           <details className="menu">
             <summary>Export</summary>
@@ -541,6 +580,36 @@ export default function App() {
         <div className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>
           {notice.text}
           <button className="link" onClick={() => setNotice(null)} aria-label="Dismiss">×</button>
+        </div>
+      )}
+
+      {imported && (
+        <div className="notice ok import" role="status">
+          <div>
+            Imported <strong>{imported.name}</strong> as a new piece of {score.measures.length} measures. Edit it here, then Save to keep it in your library.
+            {imported.result.parts.length > 1 && (
+              <label className="part">
+                {' '}Part{' '}
+                <select
+                  value={imported.result.part.index}
+                  onChange={(e) => {
+                    if (undoStack.length > 0 && !window.confirm('Import another part and drop the edits made since importing?')) return
+                    importFile(imported.bytes, imported.name, Number(e.target.value))
+                  }}
+                >
+                  {imported.result.parts.map((p) => (
+                    <option key={p.index} value={p.index}>{p.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {imported.result.notes.length > 0 && (
+              <ul>
+                {imported.result.notes.map((n) => <li key={n}>{n}</li>)}
+              </ul>
+            )}
+          </div>
+          <button className="link" onClick={() => setImported(null)} aria-label="Dismiss">×</button>
         </div>
       )}
 
