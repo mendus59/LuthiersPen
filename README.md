@@ -10,7 +10,7 @@ Turn a solo guitar recording into classical guitar sheet music you can play back
 - Scores are engraved like a published edition: the key found by ear and its signature, notation over tablature, two voices, fingerings, string numbers, barres and chord names.
 - Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
 - Check every written note against the recording, and compare the arrangement with the composer's original score to find missing melody notes and stray ones.
-- Edit any note, rhythm or fingering, or write a new score from scratch, with undo and keyboard shortcuts.
+- Edit any note, rhythm or fingering, write a new score from scratch, or import a MusicXML or Guitar Pro file as an editable score.
 - Sign in with Google or email to save scores to your library, and export to PDF, MIDI or Guitar Pro.
 <!-- site-summary:end -->
 
@@ -29,6 +29,7 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 | Finger it | A search over left-hand positions chooses a string and fret for every note, then adds fingerings, string numbers, and barre and position marks where an edition would print them. | `src/transcribe/fingering.ts` |
 | Engrave and play | [alphaTab](https://alphatab.net) draws the notation and plays it with a nylon-guitar soundfont. | `src/model/toAlphaTab.ts`, `src/components/ScoreView.tsx` |
 | Check | Each note the score will play is looked up in the recording at that moment (its partials must stand clear of the neighbouring semitones), and each note heard must be in the score. | `src/verify/` |
+| Import | MusicXML (.musicxml, .xml, .mxl) and Guitar Pro files are read with alphaTab and turned into LuthiersPen's own score, with repeats written out. A guitar part keeps its strings, frets, fingerings and barres; any other part (piano, voice, violin) is moved into the guitar's range and fingered like a transcription. | `src/import/` |
 | Compare | The original score is lined up with the arrangement by the pitch classes sounding in each sixteenth (dynamic time warping, any key, note values halved or doubled, rubato), then its melody and bass are looked for in the arrangement and every arranged note is looked for in the original. | `src/compare/` |
 
 ### Video files
@@ -38,6 +39,10 @@ An MP4 (or MOV/WebM) video can be chosen like an audio file; only its sound is r
 ### YouTube
 
 A static website cannot download the audio of a YouTube video. Instead the video plays inside the page and the browser records the tab's sound, with your permission: choose *this tab* and keep *Also share tab audio* on. This takes as long as the video and needs Chrome or Edge on a computer.
+
+### Importing sheet music
+
+*Import* in the top bar opens a MusicXML or Guitar Pro file as a new piece that can be edited, played, checked and saved to the library like a transcription. The title, composer, key, time signatures (including pick-up bars), tempo and two voices come across; repeats are written out. With several parts in the file, the guitar part is chosen if there is one, otherwise the part with the most notes, and another can be picked from the bar above the score. Grace notes, a third voice, dynamics and slurs are left out, and the bar says what was dropped.
 
 ### Comparing with the original
 
