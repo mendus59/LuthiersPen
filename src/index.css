@@ -149,3 +149,11 @@ aside nav button.on { background: none; color: var(--accent); border-bottom-colo
 }
 @media print { .top, .transport, aside, .notice { display: none; } }
 .missing { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; font-family: system-ui, sans-serif; font-size: 13px; }
+
+/* Compare with the original */
+.facts { margin: 0; padding-left: 18px; font-family: system-ui, sans-serif; font-size: 13px; display: flex; flex-direction: column; gap: 2px; }
+.findings { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; font-family: system-ui, sans-serif; font-size: 13px; }
+.findings li { display: flex; align-items: center; gap: 6px; }
+.findings .dim { color: var(--muted); }
+.findings button.small { margin-left: auto; padding: 1px 8px; font-size: 12px; }
+.panel-body details summary { cursor: pointer; font-family: system-ui, sans-serif; font-size: 13px; color: var(--muted); margin-top: 8px; }
