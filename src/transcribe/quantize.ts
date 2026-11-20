@@ -1,7 +1,7 @@
 import { type Beat, type Dur, MAX_FRET, type Measure, type Note, type Score, STANDARD_TUNING } from '../model/score'
 import { type Key, keyFromHistogram } from '../model/keys'
 import { assignFingerboard, type GridNote, type GroupMark } from './fingering'
-import { beatsToTime, type Timing, timeToBeats, timingTempo } from './tempo'
+import { beatsToTime, rescaleTiming, type Timing, timeToBeats, timingTempo } from './tempo'
 import type { NoteEvent } from './types'
 
 export interface QuantizeOptions {
@@ -85,22 +85,81 @@ function bassAccents(notes: NoteEvent[], timing: Timing): number[] {
   return accents
 }
 
+/** Autocorrelation of a sequence: how alike its values are `lag` steps apart (1 = the same). */
+function selfSimilarity(values: number[]): (lag: number) => number {
+  const n = values.length
+  const mean = values.reduce((a, b) => a + b, 0) / n
+  const variance = values.reduce((a, b) => a + (b - mean) * (b - mean), 0)
+  return (lag: number) => {
+    if (variance === 0) return 0
+    let sum = 0
+    for (let i = 0; i + lag < n; i++) sum += (values[i] - mean) * (values[i + lag] - mean)
+    return sum / variance
+  }
+}
+
+/**
+ * How much the harmony changes at each beat of the pulse: the pitch classes sounding in the two
+ * beats before it against the two beats after it (0 = the same chord, 1 = nothing in common).
+ */
+function harmonyChanges(notes: NoteEvent[], timing: Timing): number[] {
+  const n = timing.beatTimes.length + 2
+  const profile = Array.from({ length: n }, () => new Array<number>(12).fill(0))
+  for (const note of notes) {
+    const b = Math.floor(timeToBeats(timing, note.start) + 0.15)
+    if (b >= 0 && b < n) profile[b][Math.round(note.pitch) % 12] += note.amplitude * Math.min(1, note.duration)
+  }
+  const span = (a: number, z: number) => {
+    const v = new Array<number>(12).fill(0)
+    for (let q = Math.max(0, a); q < Math.min(n, z); q++) for (let c = 0; c < 12; c++) v[c] += profile[q][c]
+    return v
+  }
+  return Array.from({ length: n }, (_, q) => {
+    const x = span(q - 2, q)
+    const y = span(q, q + 2)
+    let dot = 0
+    let xx = 0
+    let yy = 0
+    for (let c = 0; c < 12; c++) {
+      dot += x[c] * y[c]
+      xx += x[c] * x[c]
+      yy += y[c] * y[c]
+    }
+    return xx && yy ? 1 - dot / Math.sqrt(xx * yy) : 0
+  })
+}
+
+/**
+ * Settle the pulse and the meter together. Running notes give the beat tracker no reason to prefer
+ * the quarter over the eighth in a slow piece, so it can tick twice per beat, which then reads as
+ * a quick pulse. The bar gives it away: when such a quick pulse has the bass coming back every
+ * eight ticks rather than every four, or the harmony changing every eight ticks while the bass does
+ * not mark four, the bar is twice as long as the pulse makes it and the real beat is every other
+ * tick. Triple time needs no such check: a quick pulse there is already written in 3/8.
+ */
+export function hearPulse(notes: NoteEvent[], timing: Timing): { timing: Timing; timeSig: [number, number] } {
+  const timeSig = guessMeter(notes, timing)
+  const accents = bassAccents(notes, timing)
+  if (timeSig[0] !== 4 || timingTempo(timing) < QUICK_PULSE || accents.length < 32) return { timing, timeSig }
+  const bass = selfSimilarity(accents)
+  const harmony = selfSimilarity(harmonyChanges(notes, timing))
+  const bassSays = bass(8) >= 0.2 && bass(8) >= bass(4) + 0.03
+  const harmonySays = harmony(8) >= 0.3 && harmony(8) >= harmony(4) + 0.3 && bass(4) < 0.3
+  if (!bassSays && !harmonySays) return { timing, timeSig }
+  return { timing: rescaleTiming(timing, 0.5), timeSig: [4, 4] }
+}
+
+/** Beats per minute from which a tracked pulse may be the eighths of a slower beat. */
+const QUICK_PULSE = 115
+
 /**
  * Guess the meter from how often the bass returns: every three beats means triple time, written
  * in 3/8 when the beat is quick and 3/4 otherwise. Anything else is written in 4/4.
  */
 export function guessMeter(notes: NoteEvent[], timing: Timing): [number, number] {
   const accents = bassAccents(notes, timing)
-  const n = accents.length
-  if (n < 16) return [4, 4]
-  const mean = accents.reduce((a, b) => a + b, 0) / n
-  const variance = accents.reduce((a, b) => a + (b - mean) * (b - mean), 0)
-  if (variance === 0) return [4, 4]
-  const repeat = (lag: number) => {
-    let sum = 0
-    for (let i = 0; i + lag < n; i++) sum += (accents[i] - mean) * (accents[i + lag] - mean)
-    return sum / variance
-  }
+  if (accents.length < 16 || accents.every((a) => a === accents[0])) return [4, 4]
+  const repeat = selfSimilarity(accents)
   const triple = repeat(3)
   if (triple < 0.1 || triple < Math.max(repeat(2), repeat(4)) + 0.05) return [4, 4]
   return timingTempo(timing) >= 110 ? [3, 8] : [3, 4]

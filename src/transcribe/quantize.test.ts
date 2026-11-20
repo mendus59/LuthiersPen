@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { measureTicks, notePitch, voiceTicks } from '../model/score'
 import { fitBars } from './bars'
-import { guessKey, guessMeter, quantize } from './quantize'
+import { guessKey, guessMeter, hearPulse, quantize } from './quantize'
 import { type Timing, timingTempo, trackBeats } from './tempo'
 import type { NoteEvent } from './types'
 
@@ -21,6 +21,23 @@ function study(bpm: number, bars: number, drift = 0): NoteEvent[] {
   }
   return out
 }
+
+/** Running sixteenths over one bass note and one chord per bar, like a slow lullaby arpeggio. */
+function lullaby(bpm: number, bars: number): NoteEvent[] {
+  const out: NoteEvent[] = []
+  const chords = [[43, 55, 59, 66], [42, 57, 62, 66], [40, 55, 59, 64], [38, 54, 62, 66]]
+  const sixteenth = 60 / bpm / 4
+  for (let bar = 0; bar < bars; bar++) {
+    const [bass, ...upper] = chords[bar % chords.length]
+    const t0 = 0.5 + bar * 16 * sixteenth
+    out.push({ start: t0, duration: 16 * sixteenth, pitch: bass, amplitude: 0.5 })
+    for (let k = 0; k < 16; k++) out.push({ start: t0 + k * sixteenth, duration: sixteenth * 2, pitch: upper[[2, 0, 1, 0][k % 4]] + (k % 4 === 0 ? 12 : 0), amplitude: k % 4 === 0 ? 0.7 : 0.45 })
+  }
+  return out
+}
+
+/** A pulse ticking every `sec` seconds from the first note. */
+const ticks = (sec: number, count: number): Timing => ({ beatTimes: Array.from({ length: count }, (_, i) => 0.5 + i * sec) })
 
 describe('transcription pipeline', () => {
   it('finds the tempo', () => {
@@ -53,6 +70,21 @@ describe('transcription pipeline', () => {
         for (const n of b.notes) pitches.add(notePitch(score, n))
       }
     expect([...pitches].sort((a, b) => a - b)).toEqual([40, 45, 50, 59, 60, 62, 64, 65, 68, 69, 72])
+  })
+
+  it('halves a pulse that ticks at the eighths of a slow bar', () => {
+    const notes = lullaby(70, 16)
+    const eighths = ticks(60 / 140, 16 * 8)
+    const { timing, timeSig } = hearPulse(notes, eighths)
+    expect(timeSig).toEqual([4, 4])
+    expect(Math.abs(timingTempo(timing) - 70)).toBeLessThanOrEqual(1)
+  })
+
+  it('keeps a quick pulse whose bass marks every four beats', () => {
+    // The same notes at twice the speed are a 4/4 piece in eighths at 140, with the bass on each downbeat.
+    const notes = lullaby(140, 16).filter((n, i) => n.pitch < 50 || i % 2 === 1)
+    const quarters = ticks(60 / 140, 16 * 4)
+    expect(timingTempo(hearPulse(notes, quarters).timing)).toBe(140)
   })
 
   it('hears the arpeggio study in A minor', () => {
