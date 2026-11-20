@@ -17,7 +17,7 @@ import type { RenderOptions } from './model/toAlphaTab'
 import { MODEL_RATE, decodeToMono, monoToWav } from './transcribe/audio'
 import { detectNotes } from './transcribe/detect'
 import { fitBars } from './transcribe/bars'
-import { guessKey, guessMeter, hearSwing, quantize, stepsPerBeat } from './transcribe/quantize'
+import { guessKey, hearPulse, hearSwing, quantize, stepsPerBeat } from './transcribe/quantize'
 import { type Timing, beatsToTime, rescaleTiming, timingTempo, trackBeats } from './transcribe/tempo'
 import type { NoteEvent } from './transcribe/types'
 import { type VerifyResult, verify } from './verify/verify'
@@ -190,12 +190,13 @@ export default function App() {
         setBusy('Listening for notes…')
         const events = await detectNotes(mono, setProgress)
         if (events.length < 4) throw new Error('No guitar notes were found in that recording.')
-        const rec: Recording = { name, mono, url: URL.createObjectURL(monoToWav(mono)), events, timing: trackBeats(events), key: guessKey(events) }
+        const pulse = hearPulse(events, trackBeats(events))
+        const rec: Recording = { name, mono, url: URL.createObjectURL(monoToWav(mono)), events, timing: pulse.timing, key: guessKey(events) }
         setRecording((old) => {
           if (old) URL.revokeObjectURL(old.url)
           return rec
         })
-        const s = { ...DEFAULT_SETTINGS, timeSig: guessMeter(rec.events, rec.timing), twoVoices: settings.twoVoices, grid: settings.grid }
+        const s = { ...DEFAULT_SETTINGS, timeSig: pulse.timeSig, twoVoices: settings.twoVoices, grid: settings.grid }
         setSettings(s)
         scoreRef.current = { ...scoreRef.current, composer: '' }
         requantize(rec, s, name)
@@ -453,7 +454,7 @@ export default function App() {
       sync,
       useEvents: (events: NoteEvent[]) => {
         if (!recording) return
-        const rec = { ...recording, events, timing: trackBeats(events), key: guessKey(events) }
+        const rec = { ...recording, events, timing: hearPulse(events, trackBeats(events)).timing, key: guessKey(events) }
         setRecording(rec)
         requantize(rec, settings)
       },
