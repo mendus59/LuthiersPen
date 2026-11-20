@@ -7,11 +7,11 @@
 Turn a solo guitar recording into classical guitar sheet music you can play back, check against the original and edit, all in the browser.
 
 - Transcribe an audio or MP4 video file (all of it or a chosen part), a YouTube video played in the page, or your microphone into classical guitar notation.
+- When a video shows tablature on screen, it is read and joined with the sound, so notes, strings, frets and barlines follow the tab.
 - Scores are engraved like a published edition: the key found by ear and its signature, notation over tablature, two voices, fingerings, string numbers, barres and chord names.
 - Play the score with a moving cursor, tempo control, looping, metronome and count-in, or hear the original recording in step with it.
 - Check every written note against the recording, and compare the arrangement with the composer's original score to find missing melody notes and stray ones.
-- Edit any note, rhythm or fingering, write a new score from scratch, or import a MusicXML or Guitar Pro file as an editable score.
-- Sign in with Google or email to save scores to your library, and export to PDF, MIDI or Guitar Pro.
+- Edit any note, rhythm or fingering, write a new score, or import MusicXML or Guitar Pro; sign in to save scores and export to PDF, MIDI or Guitar Pro.
 <!-- site-summary:end -->
 
 **Open the app: https://mendus59.github.io/LuthiersPen/**
@@ -34,7 +34,32 @@ Everything runs in the browser; the site is static and hosted on GitHub Pages.
 
 ### Video files
 
-An MP4 (or MOV/WebM) video can be chosen like an audio file; only its sound is read. *From* and *To* limit the transcription to part of the recording, for example the performance at the start of a lesson video without the slow walkthrough and its metronome.
+An MP4 (or MOV/WebM) video can be chosen like an audio file. *From* and *To* limit the transcription to part of the recording, for example the performance at the start of a lesson video without the slow walkthrough and its metronome.
+
+### Tablature shown in a video
+
+Many lesson videos show the tab on screen, often only in the slow walkthrough after the performance. When a video file is transcribed, LuthiersPen first looks at a dozen frames spread through the whole video for a six-line tab staff (dark on light or light on dark). If it finds one, it reads a frame every two seconds (`src/tabread/`):
+
+- the six lines are found as evenly spaced thin strokes across the picture, and lifted off where nothing crosses them;
+- each mark on a line is compared with digit shapes taken from lesson videos and from common fonts; a 1 or 2 just left of another digit makes a fret from 10 to 24, and < > round a number make it a natural harmonic;
+- a line of tab stays on screen for several frames, so each number is taken where most of those frames see it (a cursor or a hand covers a different digit in each); lines are joined in the order shown, a tab shown twice is taken once, and a tab strip that carries the last notes of the previous page over is not doubled.
+
+The sound is then lined up with the tab by dynamic programming: each pluck plays the next chord of the tab, a chord a little further on, the first chord of another bar (a repeat), or none. The tuning (standard, drop D, double drop D or DADGAD) is the one under which the two agree best. What is written:
+
+- every tab chord the player is heard playing, with the tab's notes, strings and frets, at the time it was heard, even where the note filter alone would have thought a note too faint;
+- notes the tab does not have only when they were heard very clearly;
+- barlines where the tab's bars were heard to begin, and the meter from how many beats a bar lasts.
+
+If the tab does not match the recording (another piece, or a part not transcribed), the notes are written as heard and a note says so. *Follow the tablature shown in the video* in the Transcribe panel switches between the two readings. A video that shows only tab still gets standard notation over it, as for any recording.
+
+Over the 18 test recordings (17 with tab on screen), reading the tab and joining it with the sound changed the scores like this (tab notes compared with the written score in order of pitch; a bar is right when all its notes land in one measure of their own):
+
+| | Notes found | Written notes correct | Bars right |
+|---|---|---|---|
+| Sound only | 90.6% | 97.4% | 66.1% |
+| Sound and on-screen tab | 93.0% | 97.6% | 94.7% |
+
+The tab reader finds 99.5% of the chords of the tabs read for these tests by the earlier offline reader. These figures come from the same videos the digit shapes were taken from, so they are an upper guide for videos drawn in other styles; the one video in another style (white tab on black) reads 100% of its chords.
 
 ### YouTube
 
@@ -72,7 +97,7 @@ Each video is scored by a detector and a note model that never heard it (the 52 
 
 - Transcription is a draft, not an edition. Expect to correct rhythms, voices and fingerings, especially in fast or dense passages.
 - Only 4/4, 3/4 and 3/8 are recognised by ear; pick any other time signature from the list (6/8 and 12/8 are followed bar by bar once chosen). Repeats are written out.
-- Barlines land where the tablature has them in about two measures out of three over the lesson videos (66%, up from 50%, each video judged by a downbeat model that never heard it). Slow pieces felt in eighths (a quarter near 60) often come out in half-length measures; choose *Beat: Half as fast* to fix them. A bar of another length inside a piece (a 2/4 bar in 4/4) is written with its own time signature where the tracker is confident, which is seldom; any measure's time signature can be changed by hand in *Edit*.
+- Without tab on screen, barlines land where the tablature has them in about two measures out of three over the lesson videos (66%, up from 50%, each video judged by a downbeat model that never heard it). Slow pieces felt in eighths (a quarter near 60) often come out in half-length measures; choose *Beat: Half as fast* to fix them. A bar of another length inside a piece (a 2/4 bar in 4/4) is written with its own time signature where the tracker is confident, which is seldom; any measure's time signature can be changed by hand in *Edit*.
 - The smallest note value is a sixteenth; triplets are not detected automatically (they can be entered by hand).
 - The check confirms that the written pitches are in the recording at the right time. It cannot tell a ringing string from one plucked again, or an octave doubling from an overtone.
 - The original recording stays in the browser session; only the score is saved to your library.

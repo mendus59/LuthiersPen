@@ -40,16 +40,28 @@ export function noteChance(features: number[]): number {
 }
 
 /**
- * Choose the played notes among the detector's candidates. The detector is asked for more
- * candidates than it is sure of, so that soft and re-plucked notes are not lost; this decides
- * which of them are real, drops one pluck reported twice, and lets a ringing string ring on.
- * Each candidate is judged on its own first, then again with what the same spot in repeated
- * passages says, so a phrase that comes back is written the same way where the playing allows.
+ * How likely each of the detector's candidates is to be a note the guitarist played: judged on
+ * its own first, then again with what the same spot in repeated passages says, so a phrase that
+ * comes back is written the same way where the playing allows.
  */
-export function pickNotes(cands: Candidate[], frames: number[][], onsets: number[][], mono: Float32Array, rate: number): NoteEvent[] {
+export function judgeCandidates(cands: Candidate[], frames: number[][], onsets: number[][], mono: Float32Array, rate: number): number[] {
   const features = noteFeatures(cands, frames, onsets, mono, rate)
   const own = features.map(noteChance)
-  const chances = withRepeats(own, repeatFeatures(cands.map((c) => c.start), cands.map((c) => c.pitch), own))
+  return withRepeats(own, repeatFeatures(cands.map((c) => c.start), cands.map((c) => c.pitch), own))
+}
+
+/**
+ * Choose the played notes among the detector's candidates. The detector is asked for more
+ * candidates than it is sure of, so that soft and re-plucked notes are not lost; this decides
+ * which of them are real (see judgeCandidates), drops one pluck reported twice, and lets a
+ * ringing string ring on.
+ */
+export function pickNotes(cands: Candidate[], frames: number[][], onsets: number[][], mono: Float32Array, rate: number): NoteEvent[] {
+  return keepLikely(cands, judgeCandidates(cands, frames, onsets, mono, rate))
+}
+
+/** Write down the candidates with a good enough chance of being played (see pickNotes). */
+export function keepLikely(cands: NoteEvent[], chances: number[], keep = KEEP): NoteEvent[] {
   const order = cands.map((_, i) => i).sort((a, b) => cands[a].start - cands[b].start)
   const last = new Map<number, { note: NoteEvent; chance: number }>()
   const kept: { note: NoteEvent; chance: number }[] = []
@@ -57,7 +69,7 @@ export function pickNotes(cands: Candidate[], frames: number[][], onsets: number
     const c = cands[i]
     const chance = chances[i]
     const before = last.get(c.pitch)
-    if (chance < KEEP) {
+    if (chance < keep) {
       if (before && c.start - (before.note.start + before.note.duration) < RING_ON) {
         before.note.duration = Math.max(before.note.duration, c.start + c.duration - before.note.start)
       }
@@ -73,7 +85,12 @@ export function pickNotes(cands: Candidate[], frames: number[][], onsets: number
       before.note.duration = end - before.note.start
       continue
     }
-    const entry = { note: { start: c.start, duration: c.duration, pitch: c.pitch, amplitude: c.amplitude }, chance }
+    const note: NoteEvent = { start: c.start, duration: c.duration, pitch: c.pitch, amplitude: c.amplitude }
+    if (c.string) {
+      note.string = c.string
+      note.fret = c.fret
+    }
+    const entry = { note, chance }
     kept.push(entry)
     last.set(c.pitch, entry)
   }

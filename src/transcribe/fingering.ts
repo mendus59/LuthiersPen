@@ -7,6 +7,7 @@ export interface GridNote {
   pitch: number
   amplitude: number
   bass: boolean
+  /** Filled in by assignFingerboard; a string already set (with its fret) is where the tab says the note is played. */
   string: number
   fret: number
   lh?: number
@@ -93,7 +94,8 @@ export function assignFingerboard(notes: GridNote[], tuning: number[]): { notes:
     let group = bySteps.get(step)!.sort((a, b) => a.pitch - b.pitch)
     let row: Choice[] = []
     for (;;) {
-      const cands = group.map((n) => candidates(tuning, n.pitch))
+      // A place given by the tab is kept; others are chosen.
+      const cands = group.map((n) => (n.string && tuning[n.string - 1] + n.fret === n.pitch && n.fret <= MAX_FRET ? [{ string: n.string, fret: n.fret }] : candidates(tuning, n.pitch)))
       row = []
       for (let p = 1; p <= MAX_POS; p++) row.push(bestInPosition(cands, p))
       if (row.some((c) => c.cost < INF) || group.length === 0) break
