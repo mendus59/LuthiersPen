@@ -12,6 +12,8 @@ export interface TranscribeSettings {
   pulse: 0.5 | 1 | 2
   /** null = the key heard in the recording. */
   key: Key | null
+  /** Follow the tablature shown in the video, when it showed some. */
+  useTab: boolean
 }
 
 interface Props {
@@ -19,9 +21,9 @@ interface Props {
   progress: number
   hasCapture: boolean
   settings: TranscribeSettings
-  detected: { tempo: number; notes: number; pickup: number; key: Key } | null
-  /** `range` limits the transcription to part of the recording, in seconds. */
-  onAudio(data: ArrayBuffer, name: string, range?: { from: number; to: number }): void
+  detected: { tempo: number; notes: number; pickup: number; key: Key; tab: { systems: number; tuningName: string } | 'mismatch' | null } | null
+  /** `range` limits the transcription to part of the recording, in seconds; `video` is the file when it is a video, to look for tab in. */
+  onAudio(data: ArrayBuffer, name: string, range?: { from: number; to: number }, video?: Blob): void
   onSettings(s: TranscribeSettings): void
   onError(message: string): void
 }
@@ -128,11 +130,12 @@ export function TranscribePanel(p: Props) {
                 const start = parseTime(from) ?? 0
                 const end = parseTime(to) ?? Infinity
                 if (end <= start) return p.onError('The end of the part to transcribe must come after its start.')
-                p.onAudio(await f.arrayBuffer(), f.name.replace(/\.[^.]+$/, ''), from.trim() || to.trim() ? { from: start, to: end } : undefined)
+                const isVideo = f.type.startsWith('video/') || /\.(mp4|mov|webm|m4v)$/i.test(f.name)
+                p.onAudio(await f.arrayBuffer(), f.name.replace(/\.[^.]+$/, ''), from.trim() || to.trim() ? { from: start, to: end } : undefined, isVideo ? f : undefined)
               }}
             />
             <strong>Choose an audio or video file</strong>
-            <span>MP3, WAV, M4A, OGG, FLAC, or an MP4 video (its sound is used)</span>
+            <span>MP3, WAV, M4A, OGG, FLAC, or an MP4 video (its sound is used, and any tablature it shows)</span>
           </label>
           <div className="grid2">
             <label>
@@ -238,6 +241,15 @@ export function TranscribePanel(p: Props) {
               </select>
             </label>
           </div>
+          {p.detected.tab === 'mismatch' && (
+            <p className="hint">The video shows tablature, but it does not match this part of the recording, so the notes are as heard.</p>
+          )}
+          {p.detected.tab && p.detected.tab !== 'mismatch' && (
+            <label className="check">
+              <input type="checkbox" checked={s.useTab} disabled={locked} onChange={(e) => set({ useTab: e.target.checked })} />
+              {`Follow the tablature shown in the video (${p.detected.tab.systems} ${p.detected.tab.systems === 1 ? 'line' : 'lines'} of tab read, ${p.detected.tab.tuningName} tuning): its notes, strings, frets and bars`}
+            </label>
+          )}
           <label className="check">
             <input type="checkbox" checked={s.twoVoices} disabled={locked} onChange={(e) => set({ twoVoices: e.target.checked })} />
             Write the bass as its own voice (stems down)

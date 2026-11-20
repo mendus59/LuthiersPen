@@ -15,27 +15,48 @@ import type { Key } from './model/keys'
 import { type Dur, type Score, newScore, notePitch, scoreKey } from './model/score'
 import type { RenderOptions } from './model/toAlphaTab'
 import { MODEL_RATE, decodeToMono, monoToWav } from './transcribe/audio'
-import { detectNotes } from './transcribe/detect'
+import { detectCandidates } from './transcribe/detect'
+import { keepLikely } from './transcribe/filter'
 import { fitBars } from './transcribe/bars'
 import { guessKey, hearPulse, hearSwing, quantize, stepsPerBeat } from './transcribe/quantize'
 import { type Timing, beatsToTime, rescaleTiming, timingTempo, trackBeats } from './transcribe/tempo'
 import type { NoteEvent } from './transcribe/types'
 import { type VerifyResult, verify } from './verify/verify'
+import type { TabSheet } from './tabread/sheet'
+import { tabTiming } from './tabread/meter'
 
 type Tab = 'transcribe' | 'edit' | 'check' | 'compare' | 'library'
 type Source = 'score' | 'recording' | 'both'
 
-interface Recording {
-  name: string
-  mono: Float32Array
-  url: string
+/** One reading of a recording's notes: by ear alone, or together with the tab shown in its video. */
+interface Reading {
   events: NoteEvent[]
   timing: Timing
   key: Key
 }
 
+/** What the tab shown in a video added to the reading. */
+interface TabReading extends Reading {
+  /** When each bar of the tab began, in the order played. */
+  downs: number[]
+  tuning: number[]
+  tuningName: string
+  systems: number
+  timeSig: [number, number]
+}
+
+interface Recording extends Reading {
+  name: string
+  mono: Float32Array
+  url: string
+  /** The notes as heard, without the video's tab. */
+  heard: Reading
+  /** The video's tab, when it showed one that fits the recording; 'mismatch' when it showed one that does not. */
+  tab: TabReading | 'mismatch' | null
+}
+
 const NONE: number[] = []
-const DEFAULT_SETTINGS: TranscribeSettings = { timeSig: [4, 4], pickup: -1, grid: 16, twoVoices: true, pulse: 1, key: null }
+const DEFAULT_SETTINGS: TranscribeSettings = { timeSig: [4, 4], pickup: -1, grid: 16, twoVoices: true, pulse: 1, key: null, useTab: true }
 
 export default function App() {
   const view = useRef<ScoreViewHandle>(null)
@@ -157,8 +178,13 @@ export default function App() {
   const requantize = useCallback(
     (rec: Recording, s: TranscribeSettings, title?: string) => {
       const heard = s.pulse === 1 ? rec.timing : rescaleTiming(rec.timing, s.pulse)
-      // Unless the pickup is fixed by hand, follow the bars of the performance to place the barlines.
-      const fit = s.pickup >= 0 ? { timing: heard, pickup: s.pickup } : fitBars(rec.events, heard, s.timeSig)
+      const tab = s.useTab && rec.tab && rec.tab !== 'mismatch' ? rec.tab : null
+      // Unless the pickup is fixed by hand, the barlines are where the video's tab has them, or
+      // else follow the bars of the performance.
+      const fit =
+        s.pickup >= 0
+          ? { timing: heard, pickup: s.pickup }
+          : ((tab && tabTiming(tab.downs, rec.events, heard, s.timeSig, true)?.fit) ?? fitBars(rec.events, heard, s.timeSig))
       const { timing, pickup } = fit
       const out = quantize(rec.events, {
         timing,
@@ -171,6 +197,7 @@ export default function App() {
         key: s.key ?? rec.key,
         title: title ?? scoreRef.current.title,
         composer: scoreRef.current.composer,
+        ...(tab ? { tuning: tab.tuning } : {}),
       })
       openScore(out.score, { sync: out.timing, keepRecording: true })
       setDirty(true)
@@ -179,7 +206,7 @@ export default function App() {
   )
 
   const onAudio = useCallback(
-    async (data: ArrayBuffer, name: string, range?: { from: number; to: number }) => {
+    async (data: ArrayBuffer, name: string, range?: { from: number; to: number }, video?: Blob) => {
       setNotice(null)
       try {
         setBusy('Reading the audio…')
@@ -187,20 +214,63 @@ export default function App() {
         const whole = await decodeToMono(data)
         const mono = range ? whole.slice(Math.round(range.from * MODEL_RATE), Number.isFinite(range.to) ? Math.round(range.to * MODEL_RATE) : undefined) : whole
         if (mono.length < MODEL_RATE) throw new Error('That recording is too short to transcribe.')
+        // A lesson video often shows the tab: read it, to write the notes the way it does.
+        let sheet: TabSheet | null = null
+        if (video) {
+          setBusy('Looking for tablature in the video…')
+          setProgress(0)
+          try {
+            const { readVideoTab } = await import('./tabread/video')
+            sheet = await readVideoTab(video, setProgress)
+          } catch {
+            sheet = null
+          }
+        }
         setBusy('Listening for notes…')
-        const events = await detectNotes(mono, setProgress)
+        setProgress(0)
+        const { cands, chances } = await detectCandidates(mono, setProgress)
+        const events = keepLikely(cands, chances)
         if (events.length < 4) throw new Error('No guitar notes were found in that recording.')
         const pulse = hearPulse(events, trackBeats(events))
-        const rec: Recording = { name, mono, url: URL.createObjectURL(monoToWav(mono)), events, timing: pulse.timing, key: guessKey(events) }
+        const heard: Reading = { events, timing: pulse.timing, key: guessKey(events) }
+        let tab: Recording['tab'] = null
+        if (sheet) {
+          const { fuseTab } = await import('./tabread/fuse')
+          const fused = fuseTab(cands, chances, sheet)
+          if (!fused) tab = 'mismatch'
+          else {
+            const p = hearPulse(fused.events, trackBeats(fused.events))
+            const meter = tabTiming(fused.downs, fused.events, p.timing, p.timeSig)
+            tab = {
+              events: fused.events,
+              timing: p.timing,
+              key: guessKey(fused.events),
+              downs: fused.downs,
+              tuning: fused.tuning,
+              tuningName: fused.tuningName,
+              systems: sheet.systems,
+              timeSig: meter?.timeSig ?? p.timeSig,
+            }
+          }
+        }
+        const active = tab && tab !== 'mismatch' ? tab : heard
+        const rec: Recording = { name, mono, url: URL.createObjectURL(monoToWav(mono)), events: active.events, timing: active.timing, key: active.key, heard, tab }
         setRecording((old) => {
           if (old) URL.revokeObjectURL(old.url)
           return rec
         })
-        const s = { ...DEFAULT_SETTINGS, timeSig: pulse.timeSig, twoVoices: settings.twoVoices, grid: settings.grid }
+        const timeSig = tab && tab !== 'mismatch' ? tab.timeSig : pulse.timeSig
+        const s = { ...DEFAULT_SETTINGS, timeSig, twoVoices: settings.twoVoices, grid: settings.grid }
         setSettings(s)
         scoreRef.current = { ...scoreRef.current, composer: '' }
         requantize(rec, s, name)
-        setNotice({ kind: 'ok', text: `Transcribed ${events.length} notes. Open “Check” to compare it with the recording.` })
+        const how =
+          tab === 'mismatch'
+            ? ' The video shows tablature, but it does not match this part of the recording, so the notes are as heard.'
+            : tab
+              ? ` Notes, fingering and barlines follow the tablature shown in the video (${tab.systems} ${tab.systems === 1 ? 'line' : 'lines'} of tab, ${tab.tuningName} tuning).`
+              : ''
+        setNotice({ kind: 'ok', text: `Transcribed ${rec.events.length} notes.${how} Open “Check” to compare it with the recording.` })
       } catch (err) {
         setNotice({ kind: 'error', text: (err as Error).message || 'That file could not be read as audio.' })
       } finally {
@@ -213,7 +283,8 @@ export default function App() {
   const detected = useMemo(() => {
     if (!recording) return null
     const timing = settings.pulse === 1 ? recording.timing : rescaleTiming(recording.timing, settings.pulse)
-    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: fitBars(recording.events, timing, settings.timeSig).pickup, key: recording.key }
+    const tab = recording.tab === 'mismatch' ? ('mismatch' as const) : recording.tab ? { systems: recording.tab.systems, tuningName: recording.tab.tuningName } : null
+    return { tempo: timingTempo(timing), notes: recording.events.length, pickup: fitBars(recording.events, timing, settings.timeSig).pickup, key: recording.key, tab }
   }, [recording, settings.pulse, settings.timeSig])
 
   // ---- comparison with the original score ---------------------------------------------------
@@ -645,10 +716,17 @@ export default function App() {
               hasCapture={!!recording}
               settings={settings}
               detected={detected}
-              onAudio={(d, n, r) => void onAudio(d, n, r)}
+              onAudio={(d, n, r, v) => void onAudio(d, n, r, v)}
               onSettings={(s) => {
                 setSettings(s)
-                if (recording) requantize(recording, s)
+                if (!recording) return
+                let rec = recording
+                if (s.useTab !== settings.useTab && recording.tab && recording.tab !== 'mismatch') {
+                  const r = s.useTab ? recording.tab : recording.heard
+                  rec = { ...recording, events: r.events, timing: r.timing, key: r.key }
+                  setRecording(rec)
+                }
+                requantize(rec, s)
               }}
               onError={(text) => setNotice({ kind: 'error', text })}
             />

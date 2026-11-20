@@ -238,8 +238,13 @@ export function quantize(events: NoteEvent[], opts: QuantizeOptions): QuantizeRe
     if (old) {
       old.end = Math.max(old.end, end)
       old.amplitude = Math.max(old.amplitude, e.amplitude)
+      if (!old.string && e.string && e.fret !== undefined && pitch === e.pitch) {
+        old.string = e.string
+        old.fret = e.fret
+      }
     } else {
-      seen.set(key, { step, end, pitch, amplitude: e.amplitude, bass: false, string: 0, fret: 0 })
+      const placed = e.string && e.fret !== undefined && pitch === e.pitch ? { string: e.string, fret: e.fret } : { string: 0, fret: 0 }
+      seen.set(key, { step, end, pitch, amplitude: e.amplitude, bass: false, ...placed })
     }
   }
   // A bass note on the last grid step of a measure, with no bass on the barline that follows,
