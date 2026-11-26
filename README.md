@@ -14,6 +14,9 @@ Turn a solo guitar recording into classical guitar sheet music you can play back
 - Edit any note, rhythm or fingering, write a new score, or import MusicXML or Guitar Pro; sign in to save scores and export to PDF, MIDI or Guitar Pro.
 <!-- site-summary:end -->
 
+<!-- site-screenshot: docs/screenshot.jpg -->
+![Screenshot of LuthiersPen](docs/screenshot.jpg)
+
 **Open the app: https://mendus59.github.io/LuthiersPen/**
 
 ## How it works
